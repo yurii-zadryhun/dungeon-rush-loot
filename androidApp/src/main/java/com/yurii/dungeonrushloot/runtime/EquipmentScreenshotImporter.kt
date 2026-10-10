@@ -155,7 +155,10 @@ class EquipmentScreenshotImporter(
 
     private fun quality(span: OcrSpanDto): Double {
         val usefulCharacters = span.text.count { it.isLetterOrDigit() || it in "+-.%[]" }
-        return usefulCharacters + span.score.toDouble()
+        // Preserve a correctly recognized percentage from one pass over a
+        // longer but corrupted line from another pass (e.g. "80.0l." vs "80.0%").
+        val hasIntactPercent = INTACT_PERCENT_RE.containsMatchIn(span.text)
+        return usefulCharacters + span.score.toDouble() + if (hasIntactPercent) 100.0 else 0.0
     }
 
     private fun spansJson(spans: List<OcrSpanDto>): JSONArray =
@@ -164,6 +167,7 @@ class EquipmentScreenshotImporter(
         }
 
     companion object {
+        private val INTACT_PERCENT_RE = Regex("""[+-]\\s*\\d{1,3}(?:[.,]\\d{1,2})?\\s*%""")
         private const val ROW_MATCH_TOLERANCE_PX = 14
     }
 }
