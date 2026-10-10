@@ -76,7 +76,14 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(config["target_package"], "com.lavalabs.dungeonrush")
         self.assertIn("sell", config["targets"])
         self.assertIn("equip", config["targets"])
-        self.assertTrue(any(skill["name"] == "critical damage taken" for skill in config["skills"]))
+        self.assertTrue(any(
+            skill["name"] == "critical damage taken" and skill["exceptional"]
+            for skill in config["skills"]
+        ))
+        self.assertTrue(any(
+            skill["name"] == "attack speed" and not skill["exceptional"]
+            for skill in config["skills"]
+        ))
 
     def test_equipment_validation_and_replace_are_platform_neutral(self):
         raw = json.dumps(_equipment())
