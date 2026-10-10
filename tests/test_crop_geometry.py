@@ -1,8 +1,10 @@
 """Prevent cross-platform popup crop drift.
 
 The Android OCR adapter receives the same relative rectangle used by desktop
-PaddleOCR; the x4 badge and HUD level seen in live logs were actually *inside*
-the old OCR rectangle, so simply restoring these constants cannot remove them.
+PaddleOCR. The source screenshot demonstrates that x4 and the game's Lvl 123
+are OUTSIDE this crop. An OCR log bounding box inside that crop is not proof
+that the actual HUD pixels appeared inside the captured bitmap: investigate
+the original AccessibilityService screenshot and ML Kit input before guessing.
 """
 from __future__ import annotations
 
@@ -31,14 +33,15 @@ class CropGeometryTests(unittest.TestCase):
         self.assertEqual(json.loads(app_config_json())["crop"], reference)
         self.assertEqual(fixed_ocr_crop(1080, 2340), (135, 936, 945, 1918))
 
-    def test_ocr_log_hud_artifacts_fall_inside_original_crop(self):
-        # Real recorded bounding boxes from the 19:48 session:
-        # The excluded pixels are x < 135 or x >= 945, but the
-        # game's unrelated HUD elements are closer to the popup.
-        left, _, right, _ = fixed_ocr_crop(1080, 2340)
-        for start, end in ((837, 891), (873, 933)):
-            self.assertGreaterEqual(start, left)
-            self.assertLess(end, right)
+    def test_crop_excludes_background_hud_in_reference_screenshot(self):
+        # Verified against the user's 709x1536 screenshot: the modal occupies
+        # about x=84..625. The background HUD 'Lvl 123' starts beyond x=640
+        # and the x4 badge outside the modal starts beyond x=624.
+        left, _, right, _ = fixed_ocr_crop(709, 1536)
+        self.assertEqual((left, right), (88, 620))
+        self.assertGreaterEqual(left, 84)
+        self.assertLess(right, 624)
+        self.assertLess(right, 640)
 
     def test_invalid_rectangles_are_not_accepted_as_crop(self):
         crop = LOOT_UI.crop
