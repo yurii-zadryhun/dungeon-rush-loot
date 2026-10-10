@@ -4,7 +4,10 @@ cd "$(dirname "$0")"
 
 MODE="${1:-info}"
 SERIAL="${2:-}"
-[[ "$MODE" == "info" || "$MODE" == "auto" ]] || { echo "Usage: $0 [info|auto] [ADB_SERIAL]" >&2; exit 2; }
+STRATEGY="${3:-${LOOT_STRATEGY:-universal}}"
+EQUIPMENT_FILE="${EQUIPMENT_FILE:-equipment.json}"
+[[ "$MODE" == "info" || "$MODE" == "auto" ]] || { echo "Usage: $0 [info|auto] [ADB_SERIAL] [universal|pve|pvp]" >&2; exit 2; }
+[[ "$STRATEGY" == "universal" || "$STRATEGY" == "pve" || "$STRATEGY" == "pvp" ]] || { echo "Unknown strategy: $STRATEGY" >&2; exit 2; }
 
 select_device() {
   if [[ -n "$SERIAL" ]]; then return; fi
@@ -28,7 +31,7 @@ termux_user() {
 
 select_device
 PY="python3"; [[ -x .venv/bin/python ]] && PY=.venv/bin/python
-ARGS=(--adb "$SERIAL" --mode "$MODE" --device "${PADDLE_DEVICE:-gpu:0}")
+ARGS=(--adb "$SERIAL" --mode "$MODE" --strategy "$STRATEGY" --equipment "$EQUIPMENT_FILE" --device "${PADDLE_DEVICE:-gpu:0}")
 
 if [[ "$MODE" == "info" && "${PHONE_NOTIFY:-1}" == "1" ]]; then
   KEY="${PHONE_SSH_KEY:-$HOME/.ssh/id_ed25519_termux}"
@@ -41,6 +44,4 @@ if [[ "$MODE" == "info" && "${PHONE_NOTIFY:-1}" == "1" ]]; then
   fi
 fi
 
-#echo "Dungeon Rush loot watcher ($MODE)"
-exec "$PY" -m src "${ARGS[@]}" \
-#  --verbose
+exec "$PY" -m src "${ARGS[@]}"

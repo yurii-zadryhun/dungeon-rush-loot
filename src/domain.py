@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from typing import Mapping
 
 
 class Action(str, Enum):
@@ -14,6 +15,21 @@ class Action(str, Enum):
 class ComparisonStatus(str, Enum):
     OK = "ok"
     CHECK_OCR = "check_ocr"
+
+
+class EquipmentSlot(str, Enum):
+    WEAPON = "weapon"
+    HELMET = "helmet"
+    BACKPACK = "backpack"
+    GLOVES = "gloves"
+    NECKLACE = "necklace"
+    RING = "ring"
+
+
+class ScoringStrategy(str, Enum):
+    UNIVERSAL = "universal"
+    PVE = "pve"
+    PVP = "pvp"
 
 
 @dataclass(frozen=True)
@@ -80,19 +96,43 @@ class ParsedItem:
 
 
 @dataclass(frozen=True)
-class ScoreContribution:
-    name: str
-    value: float
-    contribution: float
+class BuildMetrics:
+    base_attack: float
+    base_health: float
+    attack_progression: float
+    health_progression: float
+    stats: Mapping[str, float]
 
 
 @dataclass(frozen=True)
-class ItemScore:
+class BuildStat:
+    name: str
+    raw: float
+    effective: float
+
+    @property
+    def capped(self) -> bool:
+        return self.effective + 1e-9 < self.raw
+
+
+@dataclass(frozen=True)
+class ScoreComponent:
+    name: str
+    score: float
+
+
+@dataclass(frozen=True)
+class BuildScore:
     total: float
-    affixes: float
-    base_power: float
-    details: tuple[ScoreContribution, ...]
-    unknown: tuple[str, ...] = ()
+    combat: float
+    flexibility: float
+    base_attack: float
+    base_health: float
+    stats: tuple[BuildStat, ...]
+    components: tuple[ScoreComponent, ...] = ()
+
+    def stat(self, name: str) -> BuildStat | None:
+        return next((stat for stat in self.stats if stat.name == name), None)
 
 
 @dataclass(frozen=True)
@@ -101,9 +141,10 @@ class Comparison:
     action: Action
     candidate: ParsedItem | None
     equipped: ParsedItem | None
-    candidate_score: ItemScore | None
-    equipped_score: ItemScore | None
+    candidate_score: BuildScore | None
+    equipped_score: BuildScore | None
     message: str
+    equipment_slot: EquipmentSlot | None = None
     rejection_reason: str | None = None
 
     @property
