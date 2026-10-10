@@ -217,6 +217,7 @@ class LootOcrVariantTest(unittest.TestCase):
             (LootItemParser().parse(right), candidate),
         ):
             self.assertEqual(observed.rarity, expected.rarity)
+            self.assertIn(expected.title.lower(), observed.title.lower())
             self.assertEqual(observed.level, expected.level)
             self.assertEqual(len(observed.stats), len(expected.stats))
             self.assertEqual(
