@@ -35,6 +35,7 @@ import com.yurii.dungeonrushloot.runtime.EquipmentScreenshotImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 @Composable
@@ -51,6 +52,12 @@ fun EquipmentImportPanel(graph: AppGraph) {
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         importing = true
         error = null
+        graph.appLog.info(
+            category = "equipment_import",
+            event = "started",
+            message = "Equipment screenshot import started.",
+            details = JSONObject().put("selected_count", uris.size),
+        )
         scope.launch {
             results = runCatching {
                 withContext(Dispatchers.Default) {
@@ -61,8 +68,44 @@ fun EquipmentImportPanel(graph: AppGraph) {
                         graph.bridge.config.equipmentImportLevelCrop,
                     ).import(uris)
                 }
-            }.onFailure {
-                error = it.message ?: it::class.simpleName
+            }.onSuccess { imported ->
+                val diagnostics = JSONArray()
+                imported.forEachIndexed { index, result ->
+                    val row = runCatching { JSONObject(result.rawJson) }
+                        .getOrElse { JSONObject().put("raw", result.rawJson) }
+                    row.put("image_index", index)
+                    diagnostics.put(row)
+                }
+                val details = JSONObject()
+                    .put("selected_count", uris.size)
+                    .put("parsed_count", imported.count { it.itemJson != null })
+                    .put("valid_count", imported.count { it.itemJson != null && it.issues.isEmpty() })
+                    .put("results", diagnostics)
+
+                if (imported.any { it.itemJson == null || it.issues.isNotEmpty() }) {
+                    graph.appLog.warning(
+                        category = "equipment_import",
+                        event = "validation_failed",
+                        message = "One or more imported equipment screenshots failed validation.",
+                        details = details,
+                    )
+                } else {
+                    graph.appLog.info(
+                        category = "equipment_import",
+                        event = "validated",
+                        message = "All imported equipment screenshots passed validation.",
+                        details = details,
+                    )
+                }
+            }.onFailure { throwable ->
+                error = throwable.message ?: throwable::class.simpleName
+                graph.appLog.error(
+                    category = "equipment_import",
+                    event = "failed",
+                    message = "Equipment screenshot import failed.",
+                    throwable = throwable,
+                    details = JSONObject().put("selected_count", uris.size),
+                )
             }.getOrNull()
             importing = false
         }
@@ -94,9 +137,32 @@ fun EquipmentImportPanel(graph: AppGraph) {
                     graph.bridge.equipmentFromImports(reviewed)
                 }.onSuccess { raw ->
                     graph.equipment.replaceRaw(raw)
+                    graph.appLog.info(
+                        category = "equipment_import",
+                        event = "saved",
+                        message = "Imported equipment was saved.",
+                        details = JSONObject().put(
+                            "slots",
+                            JSONArray(reviewed.mapNotNull { it.slot }),
+                        ),
+                    )
                     results = null
-                }.onFailure {
-                    error = it.message ?: it::class.simpleName
+                }.onFailure { throwable ->
+                    error = throwable.message ?: throwable::class.simpleName
+                    val diagnostics = JSONArray()
+                    reviewed.forEach { result ->
+                        diagnostics.put(
+                            runCatching { JSONObject(result.rawJson) }
+                                .getOrElse { JSONObject().put("raw", result.rawJson) },
+                        )
+                    }
+                    graph.appLog.error(
+                        category = "equipment_import",
+                        event = "save_validation_failed",
+                        message = "Imported equipment could not be converted to a complete loadout.",
+                        throwable = throwable,
+                        details = JSONObject().put("results", diagnostics),
+                    )
                 }
             },
         )
