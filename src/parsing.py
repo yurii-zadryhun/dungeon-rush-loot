@@ -209,7 +209,9 @@ class LootItemParser:
             if stat is not None:
                 parsed.append(stat)
             index += consumed
-        return self._dedupe(parsed)
+        # Do not erase duplicated/contradictory OCR rolls before validation.
+        # On 2-affix gear that could turn an invalid 3-row card into OK.
+        return parsed
 
     def _parse_stat(
         self, lines: Sequence[OcrLine], index: int, allow_cape_primaries: bool,
