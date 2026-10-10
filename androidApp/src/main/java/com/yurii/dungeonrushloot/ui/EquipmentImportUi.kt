@@ -58,6 +58,7 @@ fun EquipmentImportPanel(graph: AppGraph) {
                         context.applicationContext,
                         graph.bridge,
                         graph.bridge.config.equipmentImportCrop,
+                        graph.bridge.config.equipmentImportLevelCrop,
                     ).import(uris)
                 }
             }.onFailure {
