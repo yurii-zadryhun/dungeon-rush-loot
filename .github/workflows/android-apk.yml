@@ -56,6 +56,9 @@ jobs:
       - name: Shared Python tests
         run: python -m unittest discover -s tests -v
 
+      - name: Android fresh-verification unit tests
+        run: gradle --no-daemon :androidApp:testReleaseUnitTest
+
       - name: Build signed release APK
         run: gradle --no-daemon :androidApp:assembleRelease
 
