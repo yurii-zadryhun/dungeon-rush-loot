@@ -101,6 +101,25 @@ class DecisionLogStore(context: Context) : DecisionLogAdapter {
         )
     }
 
+    @Synchronized
+    fun sizeBytes(sessionId: String): Long =
+        existingSessionFile(sessionId).length()
+
+    @Synchronized
+    fun exportTo(sessionId: String, output: java.io.OutputStream) {
+        existingSessionFile(sessionId).inputStream().use { it.copyTo(output) }
+        output.flush()
+    }
+
+    private fun existingSessionFile(sessionId: String): File {
+        require(sessionId.matches(Regex("""session-[A-Za-z0-9_-]+"""))) {
+            "Invalid session file identifier."
+        }
+        val file = sessionFile(sessionId)
+        require(file.isFile) { "Session log does not exist." }
+        return file
+    }
+
     fun loadLatest(sessionId: String, limit: Int): List<DecisionLogEntry> {
         val file = sessionFile(sessionId)
         if (!file.exists() || limit <= 0) return emptyList()
