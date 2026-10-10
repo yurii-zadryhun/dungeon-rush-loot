@@ -2,6 +2,7 @@ package com.yurii.dungeonrushloot.app
 
 import android.content.Context
 import com.yurii.dungeonrushloot.bridge.PythonDecisionBridge
+import com.yurii.dungeonrushloot.data.ApplicationLogStore
 import com.yurii.dungeonrushloot.data.AutomationPreferences
 import com.yurii.dungeonrushloot.data.DecisionLogStore
 import com.yurii.dungeonrushloot.data.EquipmentStore
@@ -9,6 +10,7 @@ import com.yurii.dungeonrushloot.data.EquipmentStore
 class AppGraph private constructor(context: Context) {
     private val appContext = context.applicationContext
 
+    val appLog: ApplicationLogStore by lazy { ApplicationLogStore.createIn(appContext.filesDir) }
     val bridge: PythonDecisionBridge by lazy { PythonDecisionBridge() }
     val preferences: AutomationPreferences by lazy { AutomationPreferences(appContext) }
     val equipment: EquipmentStore by lazy { EquipmentStore(appContext) }
