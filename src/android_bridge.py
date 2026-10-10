@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from .config import RARITY_TIERS, SKILLS, TARGET_PACKAGE
+from .config import EXCEPTIONAL_SKILLS, RARITY_TIERS, SKILLS, TARGET_PACKAGE
 from .core import LootDecisionEngine
 from .domain import Action, Box, Comparison, ComparisonStatus, EquipmentSlot, OcrSpan, ParsedItem, ParsedStat, ScoringStrategy
 from .equipment import EquipmentCodec, EquipmentStateError, InMemoryEquipmentRepository
@@ -37,6 +37,7 @@ def app_config_json() -> str:
                 "name": name,
                 "per_item_cap": rule.cap,
                 "category": rule.category,
+                "exceptional": name in EXCEPTIONAL_SKILLS,
             }
             for name, rule in sorted(SKILLS.items())
         ],
