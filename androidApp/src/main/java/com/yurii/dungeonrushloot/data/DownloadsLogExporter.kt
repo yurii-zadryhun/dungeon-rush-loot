@@ -15,7 +15,7 @@ import java.io.OutputStream
  */
 class DownloadsLogExporter(private val context: Context) {
     fun save(fileName: String, write: (OutputStream) -> Unit): String {
-        require(fileName.matches(Regex("""[A-Za-z0-9._-]+\\.jsonl"""))) {
+        require(fileName.matches(Regex("""[A-Za-z0-9._-]+\.jsonl"""))) {
             "Invalid JSONL export filename."
         }
 
