@@ -13,7 +13,7 @@ from .events import comparison_event
 from .scoring import BuildScorer, ItemComparer
 from .strategies import strategy_for
 from .text import canonical_name
-from .ui_geometry import EQUIPMENT_IMPORT_CROP, LOOT_UI
+from .ui_geometry import EQUIPMENT_IMPORT_CROP, EQUIPMENT_IMPORT_LEVEL_CROP, LOOT_UI
 
 
 def app_config_json() -> str:
@@ -22,6 +22,7 @@ def app_config_json() -> str:
         "target_package": TARGET_PACKAGE,
         "crop": LOOT_UI.crop.to_dict(),
         "equipment_import_crop": EQUIPMENT_IMPORT_CROP.to_dict(),
+        "equipment_import_level_crop": EQUIPMENT_IMPORT_LEVEL_CROP.to_dict(),
         "slots": [slot.value for slot in EquipmentSlot],
         "targets": {
             action.value: rect.to_dict()
@@ -63,8 +64,11 @@ def validate_equipment_json(equipment_json: str) -> str:
         )
 
 
-def import_equipment_spans_json(spans_json: str) -> str:
-    result = EquipmentScreenshotParser().parse_spans(_parse_spans(spans_json))
+def import_equipment_spans_json(spans_json: str, level_spans_json: str = "[]") -> str:
+    result = EquipmentScreenshotParser().parse_spans(
+        _parse_spans(spans_json),
+        _parse_spans(level_spans_json),
+    )
     payload = {
         "status": "ok" if result.item is not None and result.slot is not None and not result.issues else "check",
         "slot": result.slot.value if result.slot else None,
