@@ -119,7 +119,9 @@ class EquipmentScreenshotParser:
 
         level = self._level(texts, level_texts)
         recovered_lines = self._recover_equipment_percents(lines, slot, title, level)
-        parsed_stats = tuple(self.item_parser._stats(recovered_lines))
+        parsed_stats = tuple(self.item_parser._stats(
+            recovered_lines, allow_cape_primaries=slot is EquipmentSlot.CAPE,
+        ))
 
         intrinsic: tuple[ParsedStat, ...] = ()
         affixes = parsed_stats
