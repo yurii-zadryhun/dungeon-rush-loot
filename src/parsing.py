@@ -90,27 +90,37 @@ class LootCardSplitter:
         stripped = normalize_text(text)
         if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", stripped, re.I):
             return False
-        if looks_like_title(stripped):
-            return True
-        # Desktop/Paddle may see plain item titles without an EXP marker.
-        # Accept only names confidently classified by the extracted APK catalog.
-        return match_standard_item([stripped]) is not None
+        match = match_standard_item([stripped])
+        if match is None:
+            return False
+        # "Backpack" or "Gloves" alone are NOT identifying item titles.
+        return match.exact or match.confidence >= 0.94
 
     @classmethod
     def _title_at(cls, lines: Sequence[OcrLine], index: int) -> str | None:
         text = normalize_text(lines[index].text)
+        if index > 0:
+            previous = normalize_text(lines[index - 1].text)
+            if (
+                cls._title_fragment(previous)
+                and cls._title_fragment(text)
+                and not cls._is_item_title(previous)
+                and match_standard_item([previous + " " + text]) is not None
+            ):
+                # This row completes a two-line title already discovered at
+                # index-1; it is not the title of a second loot card.
+                return None
+
         if cls._is_item_title(text):
             return text
 
         # Wrapped [EXP] item names are common on 709px screens, e.g.
-        # "[EXP] +11 Crimson" / "Backpack". Both fragments must reconstruct
-        # a single name in the extracted game catalog; never guess by semantics.
+        # "[EXP] +11 Crimson" / "Backpack". Both fragments must reconstruct a
+        # known catalog name. Unknown, partial titles remain CHECK/no action.
         if index + 1 >= len(lines) or not cls._title_fragment(text):
             return None
         following = normalize_text(lines[index + 1].text)
         if not cls._title_fragment(following):
-            return None
-        if cls._is_item_title(following):
             return None
         combined = f"{text} {following}"
         return combined if match_standard_item([combined]) is not None else None
