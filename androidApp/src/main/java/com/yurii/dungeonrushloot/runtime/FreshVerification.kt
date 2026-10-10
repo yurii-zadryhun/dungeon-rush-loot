@@ -8,6 +8,13 @@ import com.yurii.dungeonrushloot.model.DecisionEvent
  * The Python key excludes volatile OCR metadata while preserving numeric rolls.
  */
 internal object FreshVerification {
+    /** Retry a *new frame* once if ML Kit lost the EXP token on a verification
+     * pass. A second failed OCR still fails closed; never fabricate EXP. */
+    fun retryMissingExp(first: DecisionEvent, fresh: DecisionEvent): Boolean =
+        first.status == "ok" && !first.candidateKey.isNullOrBlank() &&
+            fresh.status == "check_ocr" &&
+            fresh.message.contains("requires 0-0 exceptional affixes; parsed ")
+
     fun rejectionReason(first: DecisionEvent, second: DecisionEvent): String? = when {
         first.status != "ok" || first.candidateKey.isNullOrBlank() ->
             "Initial OCR did not provide a verified item identity."
