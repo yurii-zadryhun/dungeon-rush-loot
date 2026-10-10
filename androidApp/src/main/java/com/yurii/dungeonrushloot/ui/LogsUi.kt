@@ -357,7 +357,8 @@ private fun ItemColumn(title: String, item: JSONObject?, modifier: Modifier) {
             Text("—")
             return
         }
-        Text(item.optString("rarity") + " Lv" + item.optInt("level"))
+        val level = item.optInt("level", -1)
+        Text(item.optString("rarity") + if (level in 1..130) " Lv$level" else " · Level unreadable")
         val stats = item.optJSONArray("stats") ?: JSONArray()
         repeat(stats.length()) { index ->
             val stat = stats.optJSONObject(index) ?: return@repeat
