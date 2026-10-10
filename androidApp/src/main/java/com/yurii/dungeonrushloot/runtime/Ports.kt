@@ -15,10 +15,26 @@ interface ScreenCaptureAdapter {
     suspend fun capture(): CapturedFrame
 }
 
+data class OcrDebugSnapshot(
+    val spans: List<OcrSpanDto>,
+    val cropPng: ByteArray,
+    val inputPng: ByteArray,
+    val cropLeft: Int,
+    val cropTop: Int,
+    val cropRight: Int,
+    val cropBottom: Int,
+    val inputWidth: Int,
+    val inputHeight: Int,
+    val scale: Float,
+)
+
 interface OcrAdapter : AutoCloseable {
     suspend fun recognize(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto>
     suspend fun recognizeEnhanced(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto> =
         recognize(frame, crop)
+
+    /** Capture the actual ML Kit input and source crop, not a reconstructed image. */
+    suspend fun recognizeForDebug(frame: CapturedFrame, crop: RelativeRect): OcrDebugSnapshot
 }
 
 interface TouchAdapter {
