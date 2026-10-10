@@ -15,8 +15,9 @@ from .config import (
 from .domain import EquipmentSlot, ParsedStat
 from .text import canonical_name, normalize_text, parse_rarity
 
-# Recognition variants observed in device OCR, not arbitrary partial strings.
-EXP_MARKER_RE = re.compile(r"(?<![a-z0-9])[\[(]?\s*exp\s*[\])]", re.I)
+# Recover a standalone EXP token when ML Kit drops either bracket. Never infer
+# exceptional status solely from the rolled skills.
+EXP_MARKER_RE = re.compile(r"(?<![a-z0-9_])[\[(]?\s*exp\s*[\])]?(?=\s|$|\+)", re.I)
 
 
 def has_exp_marker(title: str) -> bool:
