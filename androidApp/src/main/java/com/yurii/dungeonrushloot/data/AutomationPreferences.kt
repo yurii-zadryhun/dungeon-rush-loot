@@ -8,8 +8,14 @@ import kotlinx.coroutines.flow.StateFlow
 class AutomationPreferences(context: Context) : AutomationStateAdapter {
     private val prefs = context.getSharedPreferences("automation", Context.MODE_PRIVATE)
 
-    private val _enabled = MutableStateFlow(prefs.getBoolean(KEY_ENABLED, false))
+    // Auto is intentionally fail-closed across process restarts. A fresh process
+    // requires an explicit START AUTO, which also creates the new log session.
+    private val _enabled = MutableStateFlow(false)
     val enabled: StateFlow<Boolean> = _enabled
+
+    init {
+        prefs.edit().putBoolean(KEY_ENABLED, false).apply()
+    }
 
     private val _strategy = MutableStateFlow(prefs.getString(KEY_STRATEGY, "universal") ?: "universal")
     val strategy: StateFlow<String> = _strategy
