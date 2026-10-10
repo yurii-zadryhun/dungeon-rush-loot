@@ -135,6 +135,23 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(len(result["candidate"]["stats"]), 4)
         self.assertEqual(result["action"], "sell")
 
+    def test_plain_catalog_titles_without_exp_still_work_on_desktop(self):
+        texts = [
+            "Divine", "Celestial Helmet", "Lvl 87",
+            "+18.92% Lifesteal", "+1.98% Ranged Damage",
+            "+10.82% Critical Chance", "+67.63% Melee Defense",
+            "+6.54% Mega Crit Chance",
+            "Immortal", "Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+5.02% Critical Chance",
+            "+3.79% Health", "+4.05% Knockback",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "ok", result["message"])
+        self.assertEqual(result["equipped"]["rarity"], "Divine")
+        self.assertEqual(result["candidate"]["rarity"], "Immortal")
+        self.assertEqual(result["slot"], "helmet")
+
     def test_standalone_range_marker_is_not_an_item_title(self):
         from src.domain import Box, OcrLine
         from src.parsing import LootCardSplitter, LootItemParser
