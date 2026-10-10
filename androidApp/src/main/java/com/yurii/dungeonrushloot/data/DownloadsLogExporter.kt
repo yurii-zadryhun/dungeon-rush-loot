@@ -37,12 +37,14 @@ class DownloadsLogExporter(private val context: Context) {
                 "Unable to open Downloads file."
             }.use(write)
 
-            resolver.update(
-                uri,
-                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                null,
-                null,
-            )
+            check(
+                resolver.update(
+                    uri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null,
+                ) == 1
+            ) { "Unable to publish the Downloads file." }
             return fileName
         } catch (error: Exception) {
             resolver.delete(uri, null, null)
