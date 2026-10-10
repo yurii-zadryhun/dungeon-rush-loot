@@ -180,7 +180,8 @@ private fun AutoScreen(
         Text("One-shot OCR diagnostic", style = MaterialTheme.typography.titleMedium)
         Text(
             "Open the loot popup in the game, return here and arm capture, then switch " +
-                "back to Dungeon Rush. The next Accessibility screenshot and the exact " +
+                "back to the FULL-SCREEN Dungeon Rush game, not the Recent Apps " +
+                "switcher. The next Accessibility screenshot and the exact " +
                 "ML Kit input are saved as one ZIP in Downloads. No automated taps are sent. " +
                 "The ZIP includes your full game screen, so review it before sharing.",
             style = MaterialTheme.typography.bodySmall,
