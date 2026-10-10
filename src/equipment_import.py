@@ -5,6 +5,7 @@ import re
 from typing import Sequence
 
 from .config import MAX_ITEM_LEVEL, RARITY_TIERS, SKILLS
+from .affix_rules import has_exp_marker, unparsed_affix_lines, validate_affixes
 from .domain import EquipmentSlot, OcrLine, OcrSpan, ParsedItem, ParsedStat
 from .game_catalog import (
     CatalogMatch,
@@ -144,8 +145,7 @@ class EquipmentScreenshotParser:
 
             if primary_attack is None or primary_health is None:
                 issues.append("Wings require both absolute Damage and Health primary values.")
-            if len(affixes) != 5:
-                issues.append(f"Wings expected 5 affixes; parsed {len(affixes)}.")
+            # Wing affix count is validated alongside every other slot.
 
         elif slot is EquipmentSlot.CAPE:
             observed_intrinsic = self._first_cape_intrinsic_value(parsed_stats)
@@ -156,18 +156,25 @@ class EquipmentScreenshotParser:
             if intrinsic_names != {"damage", "health"}:
                 issues.append("Cape primary Damage/Health lines were not parsed safely.")
 
-            expected_affixes = cape_affix_count(title) if title else None
-            if expected_affixes is not None:
-                if len(affixes) != expected_affixes:
-                    issues.append(
-                        f"Cape expected {expected_affixes} affixes; parsed {len(affixes)}."
-                    )
-            elif not 1 <= len(affixes) <= 5:
-                issues.append(f"Cape affix count looks invalid: {len(affixes)}.")
+            # Low-rarity Cape variants may have only two rolled affixes.
 
         elif slot is not None:
-            if not 4 <= len(affixes) <= 5:
-                issues.append(f"Standard equipment expected 4-5 affixes; parsed {len(affixes)}.")
+            pass  # All slots share the 2-5 affix bounds below.
+
+        # Retain exceptional marker in normalized persisted title. Older
+        # importer versions stripped it when canonicalizing catalog names.
+        if slot not in {None, EquipmentSlot.WINGS, EquipmentSlot.CAPE} and has_exp_marker(" ".join(texts)):
+            title = "[EXP] " + title
+
+        if slot is not None:
+            affix_error = validate_affixes(title, affixes)
+            if affix_error:
+                issues.append(affix_error)
+            invalid_lines = unparsed_affix_lines(
+                [line.text for line in recovered_lines], parsed_stats,
+            )
+            if invalid_lines:
+                issues.append(f"Unparsed affix lines: {invalid_lines[:3]}.")
 
         if level is None:
             issues.append("Could not parse level.")
