@@ -15,4 +15,4 @@ python -m unittest discover -s tests -v
 python -m compileall -q src
 
 echo
-echo "Ready. Copy equipment.example.json to equipment.json, fill the current six items, then run ./loot_watcher.sh."
+echo "Ready. Copy equipment.example.json to equipment.json, fill the current eight slots, then run ./loot_watcher.sh."
