@@ -15,18 +15,49 @@ class EquipmentStateError(RuntimeError):
     pass
 
 
+STANDARD_SLOTS = frozenset({
+    EquipmentSlot.WEAPON,
+    EquipmentSlot.HELMET,
+    EquipmentSlot.BACKPACK,
+    EquipmentSlot.GLOVES,
+    EquipmentSlot.NECKLACE,
+    EquipmentSlot.RING,
+})
+
+
+def affix_bounds(slot: EquipmentSlot) -> tuple[int, int]:
+    if slot is EquipmentSlot.WINGS:
+        return 5, 5
+    if slot is EquipmentSlot.CAPE:
+        return 2, 5
+    return MIN_STATS, MAX_STATS
+
+
 def beneficial_value(name: str, value: float) -> float:
     return abs(value) if canonical_name(name) == "critical damage taken" else max(0.0, value)
 
 
-def item_identity(item: ParsedItem) -> tuple[int | None, int | None, tuple[tuple[str, float], ...]]:
+def item_identity(item: ParsedItem) -> tuple:
     stats = tuple(
         sorted(
             (canonical_name(stat.name), round(beneficial_value(stat.name, stat.value), 2))
             for stat in item.stats
         )
     )
-    return item.tier, item.level, stats
+    intrinsic = tuple(
+        sorted(
+            (canonical_name(stat.name), round(beneficial_value(stat.name, stat.value), 2))
+            for stat in item.intrinsic_stats
+        )
+    )
+    return (
+        item.tier,
+        item.level,
+        stats,
+        intrinsic,
+        round(item.primary_attack or 0.0, 2),
+        round(item.primary_health or 0.0, 2),
+    )
 
 
 class EquipmentLoadout:
@@ -35,7 +66,7 @@ class EquipmentLoadout:
         extra = set(items) - set(EquipmentSlot)
         if missing or extra:
             raise EquipmentStateError(
-                "Equipment must contain exactly six tracked slots; "
+                "Equipment must contain exactly eight tracked slots; "
                 f"missing={sorted(slot.value for slot in missing)}, "
                 f"extra={sorted(str(slot) for slot in extra)}."
             )
@@ -135,14 +166,39 @@ class EquipmentCodec:
             raise EquipmentStateError(
                 f"Slot {slot.value!r} level must be between 1 and {MAX_ITEM_LEVEL}; got {level}."
             )
+
         raw_stats = raw_item.get("stats")
         if not isinstance(raw_stats, dict):
             raise EquipmentStateError(f"Slot {slot.value!r} requires a stats object.")
-        if not MIN_STATS <= len(raw_stats) <= MAX_STATS:
+        minimum, maximum = affix_bounds(slot)
+        if not minimum <= len(raw_stats) <= maximum:
+            expected = str(minimum) if minimum == maximum else f"{minimum}-{maximum}"
             raise EquipmentStateError(
-                f"Slot {slot.value!r} requires {MIN_STATS}-{MAX_STATS} stats; got {len(raw_stats)}."
+                f"Slot {slot.value!r} requires {expected} affixes; got {len(raw_stats)}."
             )
         stats = tuple(EquipmentCodec.parse_stat(slot, name, value) for name, value in raw_stats.items())
+
+        intrinsic_raw = raw_item.get("intrinsic_stats", {})
+        if not isinstance(intrinsic_raw, dict):
+            raise EquipmentStateError(f"Slot {slot.value!r} intrinsic_stats must be an object.")
+        intrinsic_stats = tuple(
+            EquipmentCodec.parse_stat(slot, name, value)
+            for name, value in intrinsic_raw.items()
+        )
+
+        primary = raw_item.get("primary", {})
+        if not isinstance(primary, dict):
+            raise EquipmentStateError(f"Slot {slot.value!r} primary must be an object.")
+        primary_attack = EquipmentCodec._optional_number(primary.get("attack"), slot, "primary.attack")
+        primary_health = EquipmentCodec._optional_number(primary.get("health"), slot, "primary.health")
+
+        if slot is EquipmentSlot.WINGS and (not primary_attack or not primary_health):
+            raise EquipmentStateError("Wings require positive primary.attack and primary.health values.")
+        if slot is EquipmentSlot.CAPE:
+            intrinsic_names = {canonical_name(stat.name) for stat in intrinsic_stats}
+            if not {"damage", "health"}.issubset(intrinsic_names):
+                raise EquipmentStateError("Cape requires intrinsic Damage and Health values.")
+
         return ParsedItem(
             title=str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}"),
             rarity=rarity.title(),
@@ -152,6 +208,9 @@ class EquipmentCodec:
             raw_lines=(),
             average_ocr_confidence=1.0,
             melee=False,
+            primary_attack=primary_attack,
+            primary_health=primary_health,
+            intrinsic_stats=intrinsic_stats,
         )
 
     @staticmethod
@@ -168,13 +227,32 @@ class EquipmentCodec:
         return ParsedStat(name, value, f"{value:+.2f}% {name}", 1.0)
 
     @staticmethod
+    def _optional_number(raw_value, slot: EquipmentSlot, field: str) -> float | None:
+        if raw_value is None:
+            return None
+        try:
+            return float(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise EquipmentStateError(f"Slot {slot.value!r} {field} must be numeric.") from exc
+
+    @staticmethod
     def serialize_item(item: ParsedItem) -> dict:
-        return {
+        payload = {
             "title": item.title,
             "rarity": item.rarity,
             "level": item.level,
             "stats": {canonical_name(stat.name): stat.value for stat in item.stats},
         }
+        if item.primary_attack is not None or item.primary_health is not None:
+            payload["primary"] = {
+                "attack": item.primary_attack,
+                "health": item.primary_health,
+            }
+        if item.intrinsic_stats:
+            payload["intrinsic_stats"] = {
+                canonical_name(stat.name): stat.value for stat in item.intrinsic_stats
+            }
+        return payload
 
 
 class InMemoryEquipmentRepository:
@@ -208,7 +286,7 @@ class JsonEquipmentRepository:
         if not path.exists():
             raise EquipmentStateError(
                 f"Equipment state file does not exist: {path}. "
-                "Copy equipment.example.json, fill the six current items, and retry."
+                "Copy equipment.example.json, fill the eight current items, and retry."
             )
         try:
             return EquipmentCodec.loads_json(path.read_text(encoding="utf-8"))
