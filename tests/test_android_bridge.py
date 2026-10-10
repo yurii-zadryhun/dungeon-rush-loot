@@ -12,7 +12,6 @@ def _equipment() -> dict:
         "attack speed": 10,
         "critical chance": 5,
         "damage": 5,
-        "health": 5,
     }
     payload = {
         slot.value: {
@@ -74,8 +73,8 @@ class AndroidBridgeTest(unittest.TestCase):
     def test_config_exposes_shared_geometry_and_catalog(self):
         config = json.loads(app_config_json())
         self.assertEqual(config["target_package"], "com.lavalabs.dungeonrush")
-        self.assertEqual(config["schema"], 3)
-        self.assertEqual(config["affix_bounds"], {"min": 2, "max": 5})
+        self.assertEqual(config["schema"], 4)
+        self.assertEqual(config["affix_bounds"], {"min": 1, "max": 5})
         self.assertIn("sell", config["targets"])
         self.assertIn("equip", config["targets"])
         self.assertTrue(any(
@@ -93,7 +92,7 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertTrue(validation["valid"])
 
         candidate = {
-            "title": "Divine New Helmet",
+            "title": "Divine [EXP] New Helmet",
             "rarity": "Divine",
             "tier": 9,
             "level": 120,
