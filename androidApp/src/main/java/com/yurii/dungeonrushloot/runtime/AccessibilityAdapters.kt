@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Path
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import com.yurii.dungeonrushloot.model.RelativeRect
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -48,6 +49,8 @@ class AccessibilityScreenshotAdapter(
 
 class AccessibilityTouchAdapter(
     private val service: AccessibilityService,
+    private val foreground: ForegroundAppAdapter,
+    private val gamePackage: String,
     private val random: Random = Random.Default,
 ) : TouchAdapter {
     override suspend fun tap(
@@ -55,6 +58,7 @@ class AccessibilityTouchAdapter(
         screenWidth: Int,
         screenHeight: Int,
     ): Boolean {
+        if (foreground.currentPackage() != gamePackage) return false
         val left = (target.left * screenWidth).roundToInt()
         val right = (target.right * screenWidth).roundToInt()
         val top = (target.top * screenHeight).roundToInt()
@@ -67,6 +71,9 @@ class AccessibilityTouchAdapter(
         val duration = random.nextLong(55, 126)
 
         delay(random.nextLong(80, 221))
+        // Recheck immediately before dispatch: the user may open Recents
+        // during the randomized gesture delay.
+        if (foreground.currentPackage() != gamePackage) return false
         return suspendCoroutine { continuation ->
             val path = Path().apply {
                 moveTo(startX.toFloat(), startY.toFloat())
@@ -98,13 +105,17 @@ class AccessibilityTouchAdapter(
 class AccessibilityForegroundAdapter(
     private val service: AccessibilityService,
 ) : ForegroundAppAdapter {
-    @Volatile
-    private var lastEventPackage: String? = null
-
-    fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event?.packageName?.toString()?.let { lastEventPackage = it }
+    override fun currentPackage(): String? {
+        // Requires FLAG_RETRIEVE_INTERACTIVE_WINDOWS. The last event or the
+        // root of an inactive task is NOT proof that Dungeon Rush is foreground.
+        val windows = service.windows.map { window ->
+            ForegroundWindow(
+                packageName = window.root?.packageName?.toString(),
+                focused = window.isFocused,
+                active = window.isActive,
+                application = window.type == AccessibilityWindowInfo.TYPE_APPLICATION,
+            )
+        }
+        return ForegroundWindowGate.currentPackage(windows)
     }
-
-    override fun currentPackage(): String? =
-        service.rootInActiveWindow?.packageName?.toString() ?: lastEventPackage
 }
