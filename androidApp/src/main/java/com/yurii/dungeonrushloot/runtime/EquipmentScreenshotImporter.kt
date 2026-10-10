@@ -44,16 +44,16 @@ class EquipmentScreenshotImporter(
             // while recognizing it cleanly at another. Merge by physical row
             // and keep the richer recognition instead of passing duplicates to
             // the shared parser.
-            val main25 = ocr.recognizeLines(frame, crop, scale = 2.5f)
-            val main35 = ocr.recognizeLines(frame, crop, scale = 3.5f)
+            val main25 = recognizePass(ocr, frame, crop, index, "main_2_5x", 2.5f)
+            val main35 = recognizePass(ocr, frame, crop, index, "main_3_5x", 3.5f)
             val spans = mergeRows(main25, main35)
 
             // Level text is drawn over the icon and is much harder than the
             // card text. Run two aggressive passes over only that tiny region.
             // The shared parser can safely accept a lone integer from this crop
             // even when ML Kit misses the outlined "Lvl" glyphs.
-            val level35 = ocr.recognizeLines(frame, levelCrop, scale = 3.5f)
-            val level50 = ocr.recognizeLines(frame, levelCrop, scale = 5.0f)
+            val level35 = recognizePass(ocr, frame, levelCrop, index, "level_3_5x", 3.5f)
+            val level50 = recognizePass(ocr, frame, levelCrop, index, "level_5_0x", 5.0f)
             val levelSpans = mergeRows(level35, level50)
 
             val result = bridge.importEquipment(spans, levelSpans)
@@ -80,6 +80,46 @@ class EquipmentScreenshotImporter(
             result
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    /**
+     * Persist the raw OCR output immediately after each pass. If a later pass or
+     * Python parsing fails, earlier evidence still survives in the exported log.
+     */
+    private suspend fun recognizePass(
+        ocr: MlKitOcrAdapter,
+        frame: CapturedFrame,
+        bounds: RelativeRect,
+        imageIndex: Int,
+        name: String,
+        scale: Float,
+    ): List<OcrSpanDto> {
+        return try {
+            ocr.recognizeLines(frame, bounds, scale).also { spans ->
+                appLog.info(
+                    category = "equipment_import",
+                    event = "ocr_pass",
+                    message = "Equipment screenshot OCR pass completed.",
+                    details = JSONObject()
+                        .put("image_index", imageIndex)
+                        .put("pass", name)
+                        .put("scale", scale.toDouble())
+                        .put("lines", spansJson(spans)),
+                )
+            }
+        } catch (error: Exception) {
+            appLog.error(
+                category = "equipment_import",
+                event = "ocr_pass_failed",
+                message = "Equipment screenshot OCR pass failed.",
+                throwable = error,
+                details = JSONObject()
+                    .put("image_index", imageIndex)
+                    .put("pass", name)
+                    .put("scale", scale.toDouble()),
+            )
+            throw error
         }
     }
 
