@@ -56,7 +56,7 @@ def normalize_item_name(value: str) -> str:
     value = normalize_text(value).lower()
     value = re.sub(r"(?:\\[|\\()\\s*(?:range|ranged|melee)\\s*(?:\\]|\\))", " ", value, flags=re.I)
     value = re.sub(
-        r"^.*?exp[])]?[s:+•·-]*(?:+?s*)?d{1,2}s*",
+        r"^.*?\\bexp\\b[\\]\\)]?[\\s:+•·-]*(?:\\+?\\s*)?\\d{1,2}\\s*",
         "",
         value,
         count=1,
