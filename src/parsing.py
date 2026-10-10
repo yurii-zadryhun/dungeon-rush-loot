@@ -15,7 +15,7 @@ from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_
 # an explicit +/- sign, an unambiguous known skill, and an in-range value.
 STAT_NUMBER_RE = re.compile(
     r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
-    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|°|[lI])?(?=\s|$|[A-Za-z])",
+    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|°|[lI](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
 LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
@@ -69,8 +69,8 @@ class LootCardSplitter:
             if not re.fullmatch(r"\s*(?:sell|equip|equipped)\s*", line.text, re.I)
         ]
         titles = [
-            index for index, line in enumerate(useful)
-            if self._is_item_title(line.text)
+            index for index in range(len(useful))
+            if self._title_at(useful, index) is not None
         ]
         if len(titles) != 2:
             raise ValueError(
@@ -95,6 +95,40 @@ class LootCardSplitter:
         # Desktop/Paddle may see plain item titles without an EXP marker.
         # Accept only names confidently classified by the extracted APK catalog.
         return match_standard_item([stripped]) is not None
+
+    @classmethod
+    def _title_at(cls, lines: Sequence[OcrLine], index: int) -> str | None:
+        text = normalize_text(lines[index].text)
+        if cls._is_item_title(text):
+            return text
+
+        # Wrapped [EXP] item names are common on 709px screens, e.g.
+        # "[EXP] +11 Crimson" / "Backpack". Both fragments must reconstruct
+        # a single name in the extracted game catalog; never guess by semantics.
+        if index + 1 >= len(lines) or not cls._title_fragment(text):
+            return None
+        following = normalize_text(lines[index + 1].text)
+        if not cls._title_fragment(following):
+            return None
+        if cls._is_item_title(following):
+            return None
+        combined = f"{text} {following}"
+        return combined if match_standard_item([combined]) is not None else None
+
+    @staticmethod
+    def _title_fragment(value: str) -> bool:
+        text = normalize_text(value)
+        if not text or text.lower() in RARITY_TIERS:
+            return False
+        if text.lower() in {"equipped", "equip", "sell"}:
+            return False
+        if LEVEL_RE.search(text) or PERCENT_RE.search(text):
+            return False
+        if re.match(r"^\s*(?:damage|health)\s+\d", text, re.I):
+            return False
+        if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", text, re.I):
+            return False
+        return True
 
     @staticmethod
     def _card_start(lines: Sequence[OcrLine], title_index: int) -> int:
@@ -143,16 +177,15 @@ class LootItemParser:
 
     @staticmethod
     def _title(lines: Sequence[OcrLine]) -> str:
-        for index, line in enumerate(lines):
-            text = normalize_text(line.text)
-            if LootCardSplitter._is_item_title(text):
-                # Game UI often prints rarity and item title in different rows:
-                # "Divine" followed by "[EXP] Celestial Helmet".
-                if index > 0:
-                    rarity = normalize_text(lines[index - 1].text)
-                    if rarity.lower() in RARITY_TIERS:
-                        return f"{rarity} {text}"
-                return text
+        for index in range(len(lines)):
+            title = LootCardSplitter._title_at(lines, index)
+            if title is None:
+                continue
+            if index > 0:
+                rarity = normalize_text(lines[index - 1].text)
+                if rarity.lower() in RARITY_TIERS:
+                    return f"{rarity} {title}"
+            return title
         return ""
 
     def _stats(self, lines: Sequence[OcrLine]) -> list[ParsedStat]:
