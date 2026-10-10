@@ -157,8 +157,9 @@ class AndroidLootController(
     private suspend fun captureOneDebugFrame() {
         var frame: CapturedFrame? = null
         try {
-            frame = screenCapture.capture()
-            val snapshot = ocr.recognizeForDebug(frame, config.crop)
+            val captured = screenCapture.capture()
+            frame = captured
+            val snapshot = ocr.recognizeForDebug(captured, config.crop)
             val evaluation = runCatching {
                 bridge.evaluate(snapshot.spans, equipment.currentJson(), automation.strategyName())
             }
@@ -166,7 +167,7 @@ class AndroidLootController(
             // in one ZIP, then publishes it atomically to Downloads.
             val filename = withContext(Dispatchers.IO) {
                 debugExporter.export(
-                    frame, snapshot, config.crop, evaluation.getOrNull(),
+                    captured, snapshot, config.crop, evaluation.getOrNull(),
                     evaluation.exceptionOrNull()?.message,
                 )
             }
