@@ -217,6 +217,65 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(result["status"], "check_ocr")
         self.assertEqual(result["action"], "check")
 
+    def test_real_auto_gloves_bullet_after_level_is_verified_safely(self):
+        # Real 2026-10-10 application log: a single pass rendered
+        # "LvI 124 •7.32 Ranged Damage". Previous parser lost that stat,
+        # changing the 5-affix equipped identity and causing CHECK.
+        equipment = _equipment()
+        equipment["gloves"] = {
+            "title": "Immortal [EXP] Crimson Gloves",
+            "rarity": "Immortal", "level": 124,
+            "stats": {
+                "lifesteal": 4.50, "ranged damage": 7.32,
+                "melee damage": 19.30, "critical damage taken": -51.74,
+                "triple hit chance": 24.12,
+            },
+        }
+
+        def observe(level_stat: str):
+            rows = [
+                "Equipped", "Immortal EXP] Crimson Gloves",
+                "Damage 171.60K", "+4.50% Lifesteal",
+                level_stat, "+19.30% Melee Damage",
+                "-51.74% Critical Damage", "Taken",
+                "+24.12% Triple Hit Chance",
+                "Ancient [EXP] Winter Gloves", "Damage 33.49K",
+                "Lvl 51", "+4.38% Critical Chance",
+                "+8.54% Attack Speed", "+56.83% Ranged Defense",
+            ]
+            spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(rows)]
+            return json.loads(evaluate_spans_json(
+                json.dumps(spans), json.dumps(equipment), "pvp",
+            ))
+
+        clean = observe("LvI 124 +7.32% Ranged Damage")
+        self.assertEqual(clean["status"], "ok", clean["message"])
+        self.assertEqual(clean["slot"], "gloves")
+        self.assertTrue(clean["verification_key"])
+        for variant in ("LvI 124 •7.32 Ranged Damage", "LvI 124 ·7.32 Ranged Damage"):
+            with self.subTest(variant=variant):
+                noisy = observe(variant)
+                self.assertEqual(noisy["status"], "ok", noisy["message"])
+                self.assertEqual(noisy["verification_key"], clean["verification_key"])
+                self.assertEqual(noisy["action"], clean["action"])
+                self.assertIn(
+                    {"name": "ranged damage", "value": 7.32},
+                    [{"name": a["name"], "value": a["value"]}
+                     for a in noisy["equipped"]["stats"]],
+                )
+
+        # Do not guess a leading sign in unrelated OCR rows.
+        for variant in (
+            "•7.32 Ranged Damage",
+            "LvI 124 •70.32 Ranged Damage",  # exceeds the per-item cap
+            "LvI 124 •7.A2 Ranged Damage",  # damaged numeric digits
+            "LvI 124 •7.32 Critical Damage Taken",  # must be negative
+        ):
+            with self.subTest(rejected_variant=variant):
+                noisy = observe(variant)
+                self.assertEqual(noisy["status"], "check_ocr")
+                self.assertEqual(noisy["action"], "check")
+
     def test_different_candidate_slot_must_not_be_tapped(self):
         texts = [
             "Divine", "[EXP] Celestial Helmet", "Lvl 87",
