@@ -1,0 +1,31 @@
+package com.yurii.dungeonrushloot.runtime
+
+import android.graphics.Bitmap
+import com.yurii.dungeonrushloot.model.DecisionEvent
+import com.yurii.dungeonrushloot.model.OcrSpanDto
+import com.yurii.dungeonrushloot.model.RelativeRect
+
+data class CapturedFrame(
+    val bitmap: Bitmap,
+    val capturedAtMillis: Long = System.currentTimeMillis(),
+)
+
+interface ScreenCaptureAdapter {
+    suspend fun capture(): CapturedFrame
+}
+
+interface OcrAdapter : AutoCloseable {
+    suspend fun recognize(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto>
+}
+
+interface TouchAdapter {
+    suspend fun tap(target: RelativeRect, screenWidth: Int, screenHeight: Int): Boolean
+}
+
+interface ForegroundAppAdapter {
+    fun currentPackage(): String?
+}
+
+interface DecisionLogAdapter {
+    fun append(event: DecisionEvent, runtimeMessage: String? = null)
+}
