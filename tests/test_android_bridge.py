@@ -22,6 +22,30 @@ def _equipment() -> dict:
             "stats": dict(stats),
         }
         for slot in EquipmentSlot
+        if slot not in {EquipmentSlot.WINGS, EquipmentSlot.CAPE}
+    }
+    payload["wings"] = {
+        "title": "Eternal",
+        "rarity": "Divine",
+        "level": 100,
+        "primary": {"attack": 2250000, "health": 7500000},
+        "stats": {
+            "ranged damage": 13.13,
+            "critical damage": 79.10,
+            "damage": 13.19,
+            "critical chance": 11.06,
+            "attack speed": 30.50,
+        },
+    }
+    payload["cape"] = {
+        "title": "Divine Cloak",
+        "rarity": "Mythic",
+        "level": 31,
+        "intrinsic_stats": {"damage": 80, "health": 80},
+        "stats": {
+            "critical damage": 33.25,
+            "critical chance": 8.89,
+        },
     }
     payload["helmet"] = {
         "title": "Divine [EXP] Celestial Helmet",
