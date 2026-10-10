@@ -34,8 +34,6 @@ class LootAccessibilityService : AccessibilityService() {
             appLog = graph.appLog,
             bridge = graph.bridge,
             config = graph.bridge.config,
-            debugCapture = graph.ocrDebugCapture,
-            debugExporter = graph.ocrDebugExporter,
         )
         _connected.value = true
         graph.appLog.info(
