@@ -31,10 +31,16 @@ class LootAccessibilityService : AccessibilityService() {
             equipment = graph.equipment,
             automation = graph.preferences,
             log = graph.logs,
+            appLog = graph.appLog,
             bridge = graph.bridge,
             config = graph.bridge.config,
         )
         _connected.value = true
+        graph.appLog.info(
+            category = "accessibility",
+            event = "service_connected",
+            message = "Accessibility service connected.",
+        )
         controllerJob = scope.launch { controller.run() }
     }
 
@@ -45,19 +51,28 @@ class LootAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        graphLog("Accessibility service interrupted.")
+        val graph = AppGraph.get(this)
+        graph.logs.appendSystem("Accessibility service interrupted.")
+        graph.appLog.warning(
+            category = "accessibility",
+            event = "service_interrupted",
+            message = "Accessibility service interrupted.",
+        )
     }
 
     override fun onDestroy() {
         _connected.value = false
+        runCatching {
+            AppGraph.get(this).appLog.info(
+                category = "accessibility",
+                event = "service_destroyed",
+                message = "Accessibility service destroyed.",
+            )
+        }
         controllerJob?.cancel()
         ocr?.close()
         scope.cancel()
         super.onDestroy()
-    }
-
-    private fun graphLog(message: String) {
-        runCatching { AppGraph.get(this).logs.appendSystem(message) }
     }
 
     companion object {
