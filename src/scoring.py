@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from statistics import mean
 
 from .config import (
     BASE_SCORE_MAX,
@@ -9,15 +10,42 @@ from .config import (
     BASE_SCORE_MIN,
     BASE_SCORE_MIN_LEVEL,
     BASE_SCORE_MIN_TIER,
-    CATEGORY_WEIGHTS,
     LEVEL_SCALER,
     MAX_STATS,
     MIN_STATS,
-    SKILLS,
     TIER_SCALER,
 )
-from .domain import Action, Comparison, ComparisonStatus, ItemScore, ParsedItem, ScoreContribution
+from .domain import (
+    Action,
+    BuildMetrics,
+    BuildScore,
+    BuildStat,
+    Comparison,
+    ComparisonStatus,
+    EquipmentSlot,
+    ParsedItem,
+    ScoreComponent,
+)
+from .equipment import EquipmentLoadout, EquipmentStateError, JsonEquipmentRepository, beneficial_value
+from .strategies import BuildScoringStrategy
 from .text import canonical_name
+
+FLEXIBILITY_WEIGHT = 0.12
+FLEXIBILITY_LOOKAHEAD_SLOTS = 2
+
+PRIMARY_BASE = {
+    EquipmentSlot.WEAPON: 7.0,
+    EquipmentSlot.GLOVES: 6.0,
+    EquipmentSlot.RING: 6.0,
+    EquipmentSlot.HELMET: 45.0,
+    EquipmentSlot.BACKPACK: 30.0,
+    EquipmentSlot.NECKLACE: 20.0,
+}
+ATTACK_SLOTS = frozenset({EquipmentSlot.WEAPON, EquipmentSlot.GLOVES, EquipmentSlot.RING})
+HEALTH_SLOTS = frozenset({EquipmentSlot.HELMET, EquipmentSlot.BACKPACK, EquipmentSlot.NECKLACE})
+REFERENCE_PRIMARY_POWER = (TIER_SCALER**BASE_SCORE_MIN_TIER) * (1.0 + LEVEL_SCALER * BASE_SCORE_MIN_LEVEL)
+REFERENCE_BASE_ATTACK = sum(PRIMARY_BASE[slot] for slot in ATTACK_SLOTS) * REFERENCE_PRIMARY_POWER
+REFERENCE_BASE_HEALTH = sum(PRIMARY_BASE[slot] for slot in HEALTH_SLOTS) * REFERENCE_PRIMARY_POWER
 
 
 class PrimaryPowerScorer:
@@ -28,7 +56,7 @@ class PrimaryPowerScorer:
 
     @staticmethod
     def _power(tier: int, level: int) -> float:
-        return (TIER_SCALER ** tier) * (1.0 + LEVEL_SCALER * level)
+        return (TIER_SCALER**tier) * (1.0 + LEVEL_SCALER * level)
 
     def _normalize(self, power: float) -> float:
         minimum = self._power(BASE_SCORE_MIN_TIER, BASE_SCORE_MIN_LEVEL)
@@ -37,43 +65,102 @@ class PrimaryPowerScorer:
         return BASE_SCORE_MIN + position * (BASE_SCORE_MAX - BASE_SCORE_MIN)
 
 
-class AffixScorer:
-    def score(self, item: ParsedItem) -> tuple[float, tuple[ScoreContribution, ...], tuple[str, ...]]:
-        contributions, unknown = [], []
-        for stat in item.stats:
-            contribution = self._contribution(stat.name, stat.value)
-            if contribution is None:
-                unknown.append(stat.raw_text)
-            else:
-                contributions.append(contribution)
-        contributions.sort(key=lambda item: item.contribution, reverse=True)
-        return sum(item.contribution for item in contributions), tuple(contributions), tuple(unknown)
-
-    @staticmethod
-    def _contribution(name: str, raw_value: float) -> ScoreContribution | None:
-        canonical = canonical_name(name)
-        rule = SKILLS.get(canonical)
-        if rule is None or not math.isfinite(raw_value):
-            return None
-        value = abs(raw_value) if canonical == "critical damage taken" else max(0.0, raw_value)
-        normalized = min(1.0, value / rule.cap)
-        return ScoreContribution(canonical, value, normalized * CATEGORY_WEIGHTS[rule.category])
+class PrimaryStatCalculator:
+    def value(self, slot: EquipmentSlot, item: ParsedItem) -> float:
+        if item.tier is None or item.level is None:
+            raise ValueError("Rarity/tier and level are required for primary-stat scoring.")
+        return PRIMARY_BASE[slot] * (TIER_SCALER**item.tier) * (1.0 + LEVEL_SCALER * item.level)
 
 
-class ItemScorer:
-    def __init__(self, affixes: AffixScorer | None = None, base_power: PrimaryPowerScorer | None = None) -> None:
-        self.affixes = affixes or AffixScorer()
-        self.base_power = base_power or PrimaryPowerScorer()
+class BuildMetricsAggregator:
+    def __init__(self, primary: PrimaryStatCalculator | None = None) -> None:
+        self.primary = primary or PrimaryStatCalculator()
 
-    def score(self, item: ParsedItem) -> ItemScore:
-        affix_score, details, unknown = self.affixes.score(item)
-        base_score = self.base_power.score(item)
-        return ItemScore(affix_score + base_score, affix_score, base_score, details, unknown)
+    def aggregate(self, loadout: EquipmentLoadout) -> BuildMetrics:
+        stats: dict[str, float] = {}
+        base_attack = 0.0
+        base_health = 0.0
+        for slot, item in loadout:
+            primary = self.primary.value(slot, item)
+            if slot in ATTACK_SLOTS:
+                base_attack += primary
+            elif slot in HEALTH_SLOTS:
+                base_health += primary
+            for stat in item.stats:
+                name = canonical_name(stat.name)
+                stats[name] = stats.get(name, 0.0) + beneficial_value(name, stat.value)
+        return BuildMetrics(
+            base_attack=base_attack,
+            base_health=base_health,
+            attack_progression=base_attack / REFERENCE_BASE_ATTACK,
+            health_progression=base_health / REFERENCE_BASE_HEALTH,
+            stats=stats,
+        )
+
+
+class BuildScorer:
+    def __init__(
+        self,
+        strategy: BuildScoringStrategy,
+        aggregator: BuildMetricsAggregator | None = None,
+        flexibility_weight: float = FLEXIBILITY_WEIGHT,
+    ) -> None:
+        self.strategy = strategy
+        self.aggregator = aggregator or BuildMetricsAggregator()
+        self.flexibility_weight = flexibility_weight
+
+    def score(self, loadout: EquipmentLoadout, protected_slot: EquipmentSlot | None = None) -> BuildScore:
+        metrics = self.aggregator.aggregate(loadout)
+        combat = self.strategy.score(metrics)
+        flexibility = self._flexibility(loadout, protected_slot, combat.total)
+        build_stats = tuple(
+            BuildStat(name, raw, combat.effective_stats.get(name, raw))
+            for name, raw in sorted(metrics.stats.items())
+        )
+        components = combat.components + (ScoreComponent("flexibility", flexibility),)
+        return BuildScore(
+            total=combat.total + flexibility,
+            combat=combat.total,
+            flexibility=flexibility,
+            base_attack=metrics.base_attack,
+            base_health=metrics.base_health,
+            stats=build_stats,
+            components=components,
+        )
+
+    def _flexibility(
+        self,
+        loadout: EquipmentLoadout,
+        protected_slot: EquipmentSlot | None,
+        full_combat_score: float,
+    ) -> float:
+        if protected_slot is None or self.flexibility_weight <= 0:
+            return 0.0
+
+        marginal_losses = []
+        for slot, _ in loadout:
+            if slot is protected_slot:
+                continue
+            stripped_metrics = self.aggregator.aggregate(loadout.without_affixes(slot))
+            stripped_score = self.strategy.score(stripped_metrics).total
+            marginal_losses.append(max(0.0, full_combat_score - stripped_score))
+
+        if not marginal_losses:
+            return 0.0
+        count = min(FLEXIBILITY_LOOKAHEAD_SLOTS, len(marginal_losses))
+        easiest_slots = sorted(marginal_losses)[:count]
+        return -self.flexibility_weight * mean(easiest_slots)
 
 
 class ItemComparer:
-    def __init__(self, scorer: ItemScorer | None = None, allow_partial: bool = False) -> None:
-        self.scorer = scorer or ItemScorer()
+    def __init__(
+        self,
+        equipment: JsonEquipmentRepository | None = None,
+        scorer: BuildScorer | None = None,
+        allow_partial: bool = False,
+    ) -> None:
+        self.equipment = equipment
+        self.scorer = scorer
         self.allow_partial = allow_partial
 
     def compare(self, equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
@@ -82,22 +169,37 @@ class ItemComparer:
         validation_error = self._validation_error(equipped, candidate)
         if validation_error:
             return self._check(equipped, candidate, validation_error)
-        return self._scored_comparison(equipped, candidate)
+        if self.equipment is None or self.scorer is None:
+            return self._check(equipped, candidate, "Build-aware scoring requires an equipment state and strategy.")
+        return self._build_comparison(equipped, candidate)
+
+    def _build_comparison(self, equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
+        loadout = self.equipment.snapshot()
+        try:
+            slot = loadout.slot_of(equipped)
+        except EquipmentStateError as exc:
+            return self._check(equipped, candidate, str(exc))
+
+        current_score = self.scorer.score(loadout, protected_slot=slot)
+        candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
+        action = Action.EQUIP if candidate_score.total > current_score.total + 0.01 else Action.SELL
+        return Comparison(
+            status=ComparisonStatus.OK,
+            action=action,
+            candidate=candidate,
+            equipped=equipped,
+            candidate_score=candidate_score,
+            equipped_score=current_score,
+            message=f"{self.scorer.strategy.name.value.upper()} build-aware scoring with caps, interactions and replacement flexibility.",
+            equipment_slot=slot,
+        )
 
     def _validation_error(self, equipped: ParsedItem, candidate: ParsedItem) -> str | None:
         if equipped.tier is None or candidate.tier is None or equipped.level is None or candidate.level is None:
-            return "Could not parse rarity/level required for base-power scoring."
+            return "Could not parse rarity/level required for primary-stat scoring."
         if not self.allow_partial and (not self._valid_stat_count(equipped) or not self._valid_stat_count(candidate)):
             return f"Expected 4-5 stats; candidate={len(candidate.stats)}, equipped={len(equipped.stats)}."
         return None
-
-    def _scored_comparison(self, equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
-        equipped_score, candidate_score = self.scorer.score(equipped), self.scorer.score(candidate)
-        unknown = equipped_score.unknown + candidate_score.unknown
-        if unknown and not self.allow_partial:
-            return self._check(equipped, candidate, "Unknown OCR stats: " + ", ".join(unknown))
-        action = Action.EQUIP if candidate_score.total > equipped_score.total + 0.01 else Action.SELL
-        return Comparison(ComparisonStatus.OK, action, candidate, equipped, candidate_score, equipped_score, "Affix + calibrated base-power scoring.")
 
     @staticmethod
     def _valid_stat_count(item: ParsedItem) -> bool:
@@ -105,7 +207,16 @@ class ItemComparer:
 
     @staticmethod
     def _melee_rejection(equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
-        return Comparison(ComparisonStatus.OK, Action.SELL, candidate, equipped, None, None, "Melee candidate hard-rejected.", "melee")
+        return Comparison(
+            ComparisonStatus.OK,
+            Action.SELL,
+            candidate,
+            equipped,
+            None,
+            None,
+            "Melee candidate hard-rejected.",
+            rejection_reason="melee",
+        )
 
     @staticmethod
     def _check(equipped: ParsedItem, candidate: ParsedItem, message: str) -> Comparison:

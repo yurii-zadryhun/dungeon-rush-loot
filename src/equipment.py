@@ -6,7 +6,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
-from .config import RARITY_TIERS, SKILLS
+from .config import MAX_ITEM_LEVEL, MAX_STATS, MIN_STATS, RARITY_TIERS, SKILLS
 from .domain import EquipmentSlot, ParsedItem, ParsedStat
 from .text import canonical_name
 
@@ -85,8 +85,9 @@ class JsonEquipmentRepository:
         return self._loadout
 
     def replace(self, slot: EquipmentSlot, item: ParsedItem) -> None:
-        self._loadout = self._loadout.with_replacement(slot, item)
-        self._persist()
+        updated = self._loadout.with_replacement(slot, item)
+        self._persist(updated)
+        self._loadout = updated
 
     @staticmethod
     def _load(path: Path) -> EquipmentLoadout:
@@ -121,9 +122,17 @@ class JsonEquipmentRepository:
             level = int(raw_item["level"])
         except (KeyError, TypeError, ValueError) as exc:
             raise EquipmentStateError(f"Slot {slot.value!r} requires an integer level.") from exc
+        if not 1 <= level <= MAX_ITEM_LEVEL:
+            raise EquipmentStateError(
+                f"Slot {slot.value!r} level must be between 1 and {MAX_ITEM_LEVEL}; got {level}."
+            )
         raw_stats = raw_item.get("stats")
         if not isinstance(raw_stats, dict):
             raise EquipmentStateError(f"Slot {slot.value!r} requires a stats object.")
+        if not MIN_STATS <= len(raw_stats) <= MAX_STATS:
+            raise EquipmentStateError(
+                f"Slot {slot.value!r} requires {MIN_STATS}-{MAX_STATS} stats; got {len(raw_stats)}."
+            )
         stats = tuple(JsonEquipmentRepository._parse_stat(slot, name, value) for name, value in raw_stats.items())
         return ParsedItem(
             title=str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}"),
@@ -149,10 +158,10 @@ class JsonEquipmentRepository:
             ) from exc
         return ParsedStat(name, value, f"{value:+.2f}% {name}", 1.0)
 
-    def _persist(self) -> None:
+    def _persist(self, loadout: EquipmentLoadout) -> None:
         payload = {
             slot.value: self._serialize_item(item)
-            for slot, item in sorted(self._loadout.items.items(), key=lambda pair: pair[0].value)
+            for slot, item in sorted(loadout.items.items(), key=lambda pair: pair[0].value)
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")

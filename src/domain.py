@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Mapping
 
 
 class Action(str, Enum):
@@ -95,6 +96,15 @@ class ParsedItem:
 
 
 @dataclass(frozen=True)
+class BuildMetrics:
+    base_attack: float
+    base_health: float
+    attack_progression: float
+    health_progression: float
+    stats: Mapping[str, float]
+
+
+@dataclass(frozen=True)
 class BuildStat:
     name: str
     raw: float
@@ -115,8 +125,9 @@ class ScoreComponent:
 class BuildScore:
     total: float
     combat: float
-    base_power: float
     flexibility: float
+    base_attack: float
+    base_health: float
     stats: tuple[BuildStat, ...]
     components: tuple[ScoreComponent, ...] = ()
 
