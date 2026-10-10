@@ -163,7 +163,7 @@ class EquipmentScreenshotParser:
 
         # Retain exceptional marker in normalized persisted title. Older
         # importer versions stripped it when canonicalizing catalog names.
-        if slot not in {None, EquipmentSlot.WINGS, EquipmentSlot.CAPE} and has_exp_marker(" ".join(texts)):
+        if slot is not None and has_exp_marker(" ".join(texts)):
             title = "[EXP] " + title
 
         if slot is not None:
