@@ -183,7 +183,7 @@ class EquipmentRepositoryTest(unittest.TestCase):
             # must prove that equipped and candidate belong to the same slot.
             from dataclasses import replace
             equipped = replace(equipped, title="Divine Iron Ring")
-            candidate = replace(candidate, title="Divine Void Ring")
+            candidate = replace(candidate, title="Divine [EXP] Void Ring")
             comparer = ItemComparer(repository, BuildScorer(strategy_for(ScoringStrategy.UNIVERSAL)))
             comparison = comparer.compare(equipped, candidate)
             self.assertEqual(comparison.equipment_slot, EquipmentSlot.RING)
