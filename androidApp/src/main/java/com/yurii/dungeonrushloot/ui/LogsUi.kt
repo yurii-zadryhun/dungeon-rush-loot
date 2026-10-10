@@ -1,11 +1,9 @@
 package com.yurii.dungeonrushloot.ui
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,14 +11,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -38,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yurii.dungeonrushloot.app.AppGraph
+import com.yurii.dungeonrushloot.data.DownloadsLogExporter
 import com.yurii.dungeonrushloot.model.DecisionLogEntry
 import com.yurii.dungeonrushloot.model.LogSession
 import java.util.Locale
@@ -49,143 +49,208 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val LOG_PAGE_SIZE = 50
+private const val APPLICATION_LOG_ID = "application"
 
 @Composable
 fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
     val sessions by graph.logs.sessions.collectAsState()
-    val activeSessionId by graph.logs.activeSessionId.collectAsState()
-    val revision by graph.logs.revision.collectAsState()
-    val appLogRevision by graph.appLog.revision.collectAsState()
-    val appLogLineCount by graph.appLog.lineCount.collectAsState()
+    val logRevision by graph.logs.revision.collectAsState()
+    val appRevision by graph.appLog.revision.collectAsState()
+    val appLines by graph.appLog.lineCount.collectAsState()
+    var openedLogId by rememberSaveable { mutableStateOf<String?>(null) }
+    val activeLog = sessions.firstOrNull { it.id == openedLogId }
+
+    BackHandler(enabled = openedLogId != null) { openedLogId = null }
+
+    if (openedLogId == null) {
+        LogsBrowser(
+            sessions = sessions,
+            appLines = appLines,
+            appBytes = remember(appRevision) { graph.appLog.sizeBytes },
+            sessionSize = graph.logs::sizeBytes,
+            onOpen = { openedLogId = it },
+            modifier = modifier,
+        )
+    } else if (openedLogId == APPLICATION_LOG_ID || activeLog != null) {
+        LogsDetail(
+            graph = graph,
+            session = activeLog,
+            application = openedLogId == APPLICATION_LOG_ID,
+            revision = if (openedLogId == APPLICATION_LOG_ID) appRevision else logRevision,
+            onBack = { openedLogId = null },
+            modifier = modifier,
+        )
+    } else {
+        // A session may be removed while its detail screen is open.
+        LaunchedEffect(openedLogId) { openedLogId = null }
+    }
+}
+
+@Composable
+private fun LogsBrowser(
+    sessions: List<LogSession>,
+    appLines: Int,
+    appBytes: Long,
+    sessionSize: (String) -> Long,
+    onOpen: (String) -> Unit,
+    modifier: Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text("Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("Open a log to inspect its events or export its JSONL file to Downloads.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            LogFileRow(
+                title = "Application log",
+                subtitle = "$appLines events · ${formatBytes(appBytes)}",
+                onClick = { onOpen(APPLICATION_LOG_ID) },
+            )
+        }
+        item {
+            HorizontalDivider()
+            Text(
+                "Session logs",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 8.dp),
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        if (sessions.isEmpty()) {
+            item { Text("No Auto sessions yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        items(sessions, key = { it.id }) { session ->
+            LogFileRow(
+                title = "${session.id}.jsonl",
+                subtitle = "${session.strategy?.uppercase() ?: "UNKNOWN"} · " +
+                    "${session.eventCount} decisions · ${formatBytes(sessionSize(session.id))}" +
+                    if (session.active) " · ACTIVE" else "",
+                onClick = { onOpen(session.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LogFileRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.headlineSmall)
+        }
+    }
+}
+
+@Composable
+private fun LogsDetail(
+    graph: AppGraph,
+    session: LogSession?,
+    application: Boolean,
+    revision: Long,
+    onBack: () -> Unit,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    val exportAppLog = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/x-ndjson"),
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val failure = runCatching {
-                withContext(Dispatchers.IO) {
-                    graph.appLog.info(
-                        category = "app_log",
-                        event = "export_started",
-                        message = "Application log export started.",
-                    )
-                    val output = requireNotNull(context.contentResolver.openOutputStream(uri, "w")) {
-                        "Could not open export destination."
-                    }
-                    output.use(graph.appLog::exportTo)
-                }
-            }.exceptionOrNull()
-
-            if (failure == null) {
-                Toast.makeText(context, "Application log exported", Toast.LENGTH_SHORT).show()
-            } else {
-                graph.appLog.error(
-                    category = "app_log",
-                    event = "export_failed",
-                    message = "Application log export failed.",
-                    throwable = failure,
-                )
-                Toast.makeText(
-                    context,
-                    failure.message ?: "Export failed",
-                    Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
-    }
-
-    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
-    var visibleCount by rememberSaveable { mutableIntStateOf(LOG_PAGE_SIZE) }
+    val fileName = if (application) graph.appLog.exportFileName else "${requireNotNull(session).id}.jsonl"
+    var exporting by remember { mutableStateOf(false) }
+    var visibleCount by rememberSaveable(fileName) { mutableIntStateOf(LOG_PAGE_SIZE) }
     val listState = rememberLazyListState()
-
-    LaunchedEffect(activeSessionId, sessions) {
-        val available = sessions.map { it.id }.toSet()
-        selectedId = when {
-            activeSessionId != null -> activeSessionId
-            selectedId in available -> selectedId
-            else -> sessions.firstOrNull()?.id
+    val appEntries = if (application) {
+        remember(revision, visibleCount) { graph.appLog.loadLatest(visibleCount) }
+    } else emptyList()
+    val sessionEntries = if (!application && session != null) {
+        remember(fileName, revision, visibleCount) {
+            graph.logs.loadLatest(session.id, visibleCount)
         }
-    }
+    } else emptyList()
 
-    LaunchedEffect(selectedId) {
+    LaunchedEffect(fileName) {
         visibleCount = LOG_PAGE_SIZE
         listState.scrollToItem(0)
     }
-
-    val selectedSession = sessions.firstOrNull { it.id == selectedId }
-    val entries = remember(selectedId, visibleCount, revision) {
-        selectedId?.let { graph.logs.loadLatest(it, visibleCount) }.orEmpty()
-    }
-
-    LaunchedEffect(listState, selectedId, entries.size, visibleCount) {
-        snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-        }
+    val rowCount = if (application) appEntries.size else sessionEntries.size
+    LaunchedEffect(fileName, listState, rowCount, visibleCount) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
             .distinctUntilChanged()
-            .collect { lastIndex ->
-                if (
-                    entries.isNotEmpty() &&
-                    lastIndex >= entries.lastIndex - 5 &&
-                    entries.size >= visibleCount
-                ) {
+            .collect { last ->
+                if (rowCount >= visibleCount && last >= rowCount - 5) {
                     visibleCount += LOG_PAGE_SIZE
                 }
             }
     }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
-        Text("Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "One JSONL file per Auto session. Entries are flushed to disk immediately.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        ApplicationLogRow(
-            lineCount = appLogLineCount,
-            sizeBytes = remember(appLogRevision) { graph.appLog.sizeBytes },
-            onExport = { exportAppLog.launch(graph.appLog.exportFileName) },
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        )
-
-        SessionChooser(
-            sessions = sessions,
-            selected = selectedSession,
-            onSelected = { selectedId = it.id },
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        )
-
-        if (selectedSession == null) {
-            Text("No sessions yet.", modifier = Modifier.padding(top = 16.dp))
-            return@Column
-        }
-
-        Text(
-            (if (selectedSession.active) "ACTIVE · " else "") +
-                (selectedSession.strategy?.uppercase()?.plus(" · ") ?: "") +
-                "showing " + entries.size + " newest events",
-            modifier = Modifier.padding(top = 8.dp),
-            fontWeight = if (selectedSession.active) FontWeight.Bold else FontWeight.Normal,
-            color = if (selectedSession.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        )
-
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(entries, key = { it.timestamp + it.rawJson.hashCode() }) { entry ->
-                DecisionSummaryCard(entry)
-            }
-            if (entries.size >= visibleCount) {
-                item {
-                    Text(
-                        "Scroll for " + LOG_PAGE_SIZE + " more…",
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+            TextButton(onClick = onBack) { Text("‹ Back") }
+            Text(if (application) "Application log" else "Session log",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold)
+            OutlinedButton(
+                enabled = !exporting,
+                onClick = {
+                    exporting = true
+                    scope.launch {
+                        val failure = runCatching {
+                            withContext(Dispatchers.IO) {
+                                DownloadsLogExporter(context.applicationContext).save(fileName) { output ->
+                                    if (application) graph.appLog.exportTo(output)
+                                    else graph.logs.exportTo(requireNotNull(session).id, output)
+                                }
+                            }
+                        }.exceptionOrNull()
+                        exporting = false
+                        if (failure == null) {
+                            Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+                        } else {
+                            graph.appLog.error(
+                                category = "log_export",
+                                event = "failed",
+                                message = "Could not export $fileName to Downloads.",
+                                throwable = failure,
+                            )
+                            Toast.makeText(context, failure.message ?: "Export failed", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+            ) { Text(if (exporting) "Saving…" else "Export") }
+        }
+        Text(fileName, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 10.dp))
+        if (rowCount == 0) {
+            Text("No entries yet.", modifier = Modifier.padding(top = 12.dp))
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (application) {
+                    itemsIndexed(appEntries, key = { index, raw -> index.toString() + "-" + raw.hashCode() }) { _, raw ->
+                        ApplicationEventCard(raw)
+                    }
+                } else {
+                    items(sessionEntries, key = { it.timestamp + it.rawJson.hashCode() }) { entry ->
+                        DecisionSummaryCard(entry)
+                    }
                 }
             }
         }
@@ -193,77 +258,24 @@ fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ApplicationLogRow(
-    lineCount: Int,
-    sizeBytes: Long,
-    onExport: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Application log", fontWeight = FontWeight.Bold)
-            Text(
-                "$lineCount events · " + formatBytes(sizeBytes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        OutlinedButton(onClick = onExport) {
-            Text("Export")
-        }
-    }
-}
+private fun ApplicationEventCard(raw: String) {
+    val json = remember(raw) { runCatching { JSONObject(raw) }.getOrNull() }
+    var expanded by remember(raw) { mutableStateOf(false) }
+    val level = json?.optString("level").orEmpty()
+    val name = json?.optString("category").orEmpty() + " · " +
+        json?.optString("event").orEmpty()
 
-@Composable
-private fun SessionChooser(
-    sessions: List<LogSession>,
-    selected: LogSession?,
-    onSelected: (LogSession) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = sessions.isNotEmpty(),
-        ) {
-            val label = selected?.let {
-                shortDateTime(it.startedAt) +
-                    (it.strategy?.let { strategy -> " · " + strategy.uppercase() } ?: "") +
-                    if (it.active) " · ACTIVE" else ""
-            } ?: "Select session"
-            Text(label)
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            sessions.forEach { session ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                shortDateTime(session.startedAt) +
-                                    (if (session.active) " · ACTIVE" else ""),
-                                fontWeight = if (session.active) FontWeight.Bold else FontWeight.Normal,
-                            )
-                            Text(
-                                (session.strategy?.uppercase() ?: "UNKNOWN") +
-                                    " · " + session.eventCount + " events",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelected(session)
-                        expanded = false
-                    },
-                )
+    Card(modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(shortTime(json?.optString("timestamp").orEmpty()))
+            }
+            Text("${level.uppercase()} · ${json?.optString("message").orEmpty()}",
+                style = MaterialTheme.typography.bodySmall)
+            if (expanded) {
+                Text(json?.toString(2) ?: raw,
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }
