@@ -14,7 +14,7 @@ ABSOLUTE_PRIMARY_RE = re.compile(
     re.I,
 )
 BRACKET_RARITY_RE = re.compile(
-    r"^\s*\[(common|uncommon|rare|epic|legendary|mythic|artifact|ancient|immortal|divine|ultimate)\]\s*$",
+    r"\[(common|uncommon|rare|epic|legendary|mythic|artifact|ancient|immortal|divine|ultimate)\]",
     re.I,
 )
 RARITY_WORD_RE = re.compile(
@@ -126,7 +126,7 @@ class EquipmentScreenshotParser:
     @staticmethod
     def _slot(texts: Sequence[str], primary: dict[str, float]) -> tuple[EquipmentSlot | None, float, str]:
         combined = " ".join(texts)
-        bracket_rarity = any(BRACKET_RARITY_RE.fullmatch(text) for text in texts)
+        bracket_rarity = any(BRACKET_RARITY_RE.search(text) for text in texts)
         cape_name = bool(re.search(r"\b(?:cloak|cape)\b", combined, re.I))
         if bracket_rarity and cape_name:
             return EquipmentSlot.CAPE, 1.0, "bracketed rarity + cloak/cape title"
