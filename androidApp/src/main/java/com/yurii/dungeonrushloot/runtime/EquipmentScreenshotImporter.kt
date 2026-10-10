@@ -167,7 +167,7 @@ class EquipmentScreenshotImporter(
         }
 
     companion object {
-        private val INTACT_PERCENT_RE = Regex("""[+-]\\s*\\d{1,3}(?:[.,]\\d{1,2})?\\s*%""")
+        private val INTACT_PERCENT_RE = Regex("""[+-]\s*\d{1,3}(?:[.,]\d{1,2})?\s*%""")
         private const val ROW_MATCH_TOLERANCE_PX = 14
     }
 }
