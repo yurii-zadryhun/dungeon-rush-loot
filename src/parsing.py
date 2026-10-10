@@ -101,7 +101,7 @@ class LootItemParser:
             stats=stats,
             raw_lines=tuple(line.text for line in lines),
             average_ocr_confidence=sum(confidences) / len(confidences) if confidences else 0.0,
-            melee=is_melee_title(title),
+            melee=any(is_melee_title(line.text) for line in lines),
         )
 
     def _level(self, lines: Sequence[OcrLine]) -> int | None:
