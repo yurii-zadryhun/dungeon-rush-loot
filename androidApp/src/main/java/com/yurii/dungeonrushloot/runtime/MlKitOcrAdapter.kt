@@ -17,7 +17,12 @@ class MlKitOcrAdapter : OcrAdapter {
     override suspend fun recognize(
         frame: CapturedFrame,
         crop: RelativeRect,
-    ): List<OcrSpanDto> = recognizeElements(frame, crop)
+    ): List<OcrSpanDto> = recognizeLines(frame, crop, scale = 2.5f)
+
+    override suspend fun recognizeEnhanced(
+        frame: CapturedFrame,
+        crop: RelativeRect,
+    ): List<OcrSpanDto> = recognizeLines(frame, crop, scale = 3.5f)
 
     /**
      * Import-specific OCR mode.
