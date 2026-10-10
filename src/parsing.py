@@ -15,7 +15,7 @@ from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_
 # an explicit +/- sign, an unambiguous known skill, and an in-range value.
 STAT_NUMBER_RE = re.compile(
     r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
-    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|°|[lI](?=\s))?(?=\s|$|[A-Za-z])",
+    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
 LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
