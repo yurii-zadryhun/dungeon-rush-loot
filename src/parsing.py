@@ -188,18 +188,22 @@ class LootItemParser:
             return title
         return ""
 
-    def _stats(self, lines: Sequence[OcrLine]) -> list[ParsedStat]:
-        """Parse actual stat rows; never guess numeric digits from OCR glyphs."""
+    def _stats(
+        self, lines: Sequence[OcrLine], *, allow_cape_primaries: bool = False,
+    ) -> list[ParsedStat]:
+        """Parse stat rows without inferring or changing numeric digits."""
         parsed: list[ParsedStat] = []
         index = 0
         while index < len(lines):
-            stat, consumed = self._parse_stat(lines, index)
+            stat, consumed = self._parse_stat(lines, index, allow_cape_primaries)
             if stat is not None:
                 parsed.append(stat)
             index += consumed
         return self._dedupe(parsed)
 
-    def _parse_stat(self, lines: Sequence[OcrLine], index: int) -> tuple[ParsedStat | None, int]:
+    def _parse_stat(
+        self, lines: Sequence[OcrLine], index: int, allow_cape_primaries: bool,
+    ) -> tuple[ParsedStat | None, int]:
         line = lines[index]
         # Numbers can appear after "Lvl 87" on the same physical OCR line.
         clean = self._strip_level_marker(normalize_text(line.text))
@@ -228,7 +232,7 @@ class LootItemParser:
             # Never infer a missing percent from a poor/ambiguous name match.
             if repaired_separator and ratio < 0.93:
                 continue
-            if not self._valid_stat_value(name, value):
+            if not self._valid_stat_value(name, value, allow_cape_primaries):
                 continue
             ranked.append((ratio, consumed, name, label))
 
@@ -279,7 +283,13 @@ class LootItemParser:
         return additions
 
     @staticmethod
-    def _valid_stat_value(name: str, value: float) -> bool:
+    def _valid_stat_value(
+        name: str, value: float, allow_cape_primaries: bool,
+    ) -> bool:
+        # Intrinsic Cape Damage/Health are NOT rolled affixes. A later
+        # progression check must match their exact expected values.
+        if allow_cape_primaries and name in {"damage", "health"} and 0 < value <= 500:
+            return True
         rule = SKILLS.get(name)
         if rule is None or not 0.01 <= abs(value) <= rule.cap + 0.05:
             return False
