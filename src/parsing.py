@@ -23,7 +23,7 @@ STAT_NUMBER_RE = re.compile(
 LEVEL_MARKER_RE = re.compile(
     # ML Kit's "LU1O6" and "LU 106" are narrow observed variants of Lvl 106.
     # Repair O ONLY inside the explicit level token, never in affix numbers.
-    r"\b(?:lvl|lvi|lvu|lu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*(?P<level>\d{1,3}|\dO\d)\b",
+    r"\b(?:lvl|lvi|lvu|lu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*(?P<level>\d{1,3}|\dO\d)\b(?!%)",
     re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
