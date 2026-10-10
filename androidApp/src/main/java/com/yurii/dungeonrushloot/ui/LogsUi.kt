@@ -2,54 +2,186 @@ package com.yurii.dungeonrushloot.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yurii.dungeonrushloot.app.AppGraph
 import com.yurii.dungeonrushloot.model.DecisionLogEntry
+import com.yurii.dungeonrushloot.model.LogSession
 import java.util.Locale
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val LOG_PAGE_SIZE = 50
+
 @Composable
 fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
-    val entries by graph.logs.entries.collectAsState()
+    val sessions by graph.logs.sessions.collectAsState()
+    val activeSessionId by graph.logs.activeSessionId.collectAsState()
+    val revision by graph.logs.revision.collectAsState()
+
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var visibleCount by rememberSaveable { mutableIntStateOf(LOG_PAGE_SIZE) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(activeSessionId, sessions) {
+        val available = sessions.map { it.id }.toSet()
+        selectedId = when {
+            activeSessionId != null -> activeSessionId
+            selectedId in available -> selectedId
+            else -> sessions.firstOrNull()?.id
+        }
+    }
+
+    LaunchedEffect(selectedId) {
+        visibleCount = LOG_PAGE_SIZE
+        listState.scrollToItem(0)
+    }
+
+    val selectedSession = sessions.firstOrNull { it.id == selectedId }
+    val entries = remember(selectedId, visibleCount, revision) {
+        selectedId?.let { graph.logs.loadLatest(it, visibleCount) }.orEmpty()
+    }
+
+    LaunchedEffect(listState, selectedId, entries.size, visibleCount) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        }
+            .distinctUntilChanged()
+            .collect { lastIndex ->
+                if (
+                    entries.isNotEmpty() &&
+                    lastIndex >= entries.lastIndex - 5 &&
+                    entries.size >= visibleCount
+                ) {
+                    visibleCount += LOG_PAGE_SIZE
+                }
+            }
+    }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text("Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(entries.size.toString() + " structured events")
-            }
-            OutlinedButton(onClick = { graph.logs.clear() }, enabled = entries.isNotEmpty()) {
-                Text("Clear")
-            }
+        Text("Logs", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(
+            "One JSONL file per Auto session. Entries are flushed to disk immediately.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        SessionChooser(
+            sessions = sessions,
+            selected = selectedSession,
+            onSelected = { selectedId = it.id },
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        )
+
+        if (selectedSession == null) {
+            Text("No sessions yet.", modifier = Modifier.padding(top = 16.dp))
+            return@Column
         }
 
+        Text(
+            (if (selectedSession.active) "ACTIVE · " else "") +
+                (selectedSession.strategy?.uppercase()?.plus(" · ") ?: "") +
+                "showing " + entries.size + " newest events",
+            modifier = Modifier.padding(top = 8.dp),
+            fontWeight = if (selectedSession.active) FontWeight.Bold else FontWeight.Normal,
+            color = if (selectedSession.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(top = 12.dp),
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(entries.asReversed(), key = { it.timestamp + it.rawJson.hashCode() }) { entry ->
+            items(entries, key = { it.timestamp + it.rawJson.hashCode() }) { entry ->
                 DecisionSummaryCard(entry)
+            }
+            if (entries.size >= visibleCount) {
+                item {
+                    Text(
+                        "Scroll for " + LOG_PAGE_SIZE + " more…",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionChooser(
+    sessions: List<LogSession>,
+    selected: LogSession?,
+    onSelected: (LogSession) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = sessions.isNotEmpty(),
+        ) {
+            val label = selected?.let {
+                shortDateTime(it.startedAt) +
+                    (it.strategy?.let { strategy -> " · " + strategy.uppercase() } ?: "") +
+                    if (it.active) " · ACTIVE" else ""
+            } ?: "Select session"
+            Text(label)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            sessions.forEach { session ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                shortDateTime(session.startedAt) +
+                                    (if (session.active) " · ACTIVE" else ""),
+                                fontWeight = if (session.active) FontWeight.Bold else FontWeight.Normal,
+                            )
+                            Text(
+                                (session.strategy?.uppercase() ?: "UNKNOWN") +
+                                    " · " + session.eventCount + " events",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelected(session)
+                        expanded = false
+                    },
+                )
             }
         }
     }
@@ -59,6 +191,8 @@ fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
 fun DecisionSummaryCard(entry: DecisionLogEntry) {
     var expanded by remember(entry.rawJson) { mutableStateOf(false) }
     val container = when {
+        entry.status == "session" -> MaterialTheme.colorScheme.surfaceVariant
+        entry.status == "runtime" -> MaterialTheme.colorScheme.tertiaryContainer
         entry.status != "ok" -> MaterialTheme.colorScheme.tertiaryContainer
         entry.action == "equip" -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.errorContainer
@@ -70,10 +204,7 @@ fun DecisionSummaryCard(entry: DecisionLogEntry) {
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    label(entry),
-                    fontWeight = FontWeight.Bold,
-                )
+                Text(label(entry), fontWeight = FontWeight.Bold)
                 Text(shortTime(entry.timestamp))
             }
 
@@ -165,6 +296,8 @@ private fun ScoreColumn(title: String, score: JSONObject?, modifier: Modifier) {
 }
 
 private fun label(entry: DecisionLogEntry): String = when {
+    entry.status == "session" && entry.action == "start" -> "SESSION START"
+    entry.status == "session" && entry.action == "stop" -> "SESSION STOP"
     entry.status == "runtime" -> "RUNTIME"
     entry.status != "ok" -> "CHECK OCR"
     entry.action == "equip" -> "EQUIP" + (entry.slot?.let { " · " + it.uppercase() } ?: "")
@@ -182,6 +315,12 @@ private fun scoreText(entry: DecisionLogEntry): String {
 
 private fun shortTime(value: String): String =
     value.substringAfter('T', value).take(8)
+
+private fun shortDateTime(value: String): String {
+    val date = value.take(10)
+    val time = shortTime(value)
+    return date + " " + time
+}
 
 private fun formatOne(value: Double): String =
     if (value.isNaN()) "—" else String.format(Locale.US, "%.1f", value)
