@@ -94,6 +94,13 @@ class AndroidLootController(
             val fresh = observe(equipmentJson, strategy)
             var verified = fresh
             try {
+                if (FreshVerification.retryMissingExp(first.event, fresh.event)) {
+                    delay(220L)
+                    if (!automation.isEnabled() ||
+                        foreground.currentPackage() != config.targetPackage
+                    ) return
+                    verified = observe(equipmentJson, strategy)
+                }
                 val rejection = FreshVerification.rejectionReason(first.event, verified.event)
                 if (rejection != null) {
                     log.append(first.event, "Auto cancelled: " + rejection)
