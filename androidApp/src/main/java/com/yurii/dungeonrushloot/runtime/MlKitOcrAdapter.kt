@@ -2,7 +2,6 @@ package com.yurii.dungeonrushloot.runtime
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import java.io.ByteArrayOutputStream
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -25,14 +24,22 @@ class MlKitOcrAdapter : OcrAdapter {
         crop: RelativeRect,
     ): List<OcrSpanDto> = recognizeLines(frame, crop, scale = 3.5f)
 
-    override suspend fun recognizeForDebug(frame: CapturedFrame, crop: RelativeRect): OcrDebugSnapshot {
-        var captured: OcrDebugSnapshot? = null
-        val spans = recognizeInternal(
-            frame, crop, scale = 2.5f, lines = true,
-            debugSink = { snapshot -> captured = snapshot },
-        )
-        return checkNotNull(captured) { "OCR ran without diagnostic input capture." }
-            .copy(spans = spans)
+    override suspend fun recognizeIconLevels(
+        frame: CapturedFrame,
+        crop: RelativeRect,
+        spans: List<OcrSpanDto>,
+    ): List<OcrSpanDto> {
+        val regions = IconLevelRecovery.regions(spans, frame.bitmap.width, frame.bitmap.height)
+        val recovered = mutableListOf<OcrSpanDto>()
+        for (region in regions) {
+            // Full-popup OCR often misses the white-on-icon Lvl label.
+            // A small icon-only ROI improves glyph resolution; a light-text
+            // mask gives independent contrast evidence. Never guess numbers.
+            val normal = recognizeLines(frame, region, scale = 4.0f)
+            val masked = recognizeLines(frame, region, scale = 4.0f, lightText = true)
+            recovered += IconLevelRecovery.eligibleLevel(normal + masked)
+        }
+        return recovered
     }
 
     /**
@@ -64,7 +71,6 @@ class MlKitOcrAdapter : OcrAdapter {
         scale: Float,
         lines: Boolean,
         lightText: Boolean = false,
-        debugSink: ((OcrDebugSnapshot) -> Unit)? = null,
     ): List<OcrSpanDto> {
         require(scale >= 1f)
 
@@ -92,24 +98,6 @@ class MlKitOcrAdapter : OcrAdapter {
         // as dark text on white, without ever transforming the numeric output.
         val inputBitmap = if (lightText) isolateLightText(processed) else processed
         return try {
-            // Export from the *same* bitmap used in InputImage.fromBitmap.
-            // Never recreate the ROI later with potentially different dimensions.
-            if (debugSink != null) {
-                debugSink(
-                    OcrDebugSnapshot(
-                        spans = emptyList(),
-                        cropPng = png(cropped),
-                        inputPng = png(inputBitmap),
-                        cropLeft = left,
-                        cropTop = top,
-                        cropRight = right,
-                        cropBottom = bottom,
-                        inputWidth = inputBitmap.width,
-                        inputHeight = inputBitmap.height,
-                        scale = scale,
-                    ),
-                )
-            }
             val result = recognizer.process(InputImage.fromBitmap(inputBitmap, 0)).await()
             if (lines) {
                 result.textBlocks.flatMap { block ->
@@ -139,13 +127,6 @@ class MlKitOcrAdapter : OcrAdapter {
             if (processed !== cropped) processed.recycle()
             cropped.recycle()
         }
-    }
-
-    private fun png(source: Bitmap): ByteArray = ByteArrayOutputStream().use { bytes ->
-        check(source.compress(Bitmap.CompressFormat.PNG, 100, bytes)) {
-            "Could not encode OCR diagnostic PNG."
-        }
-        bytes.toByteArray()
     }
 
     private fun isolateLightText(source: Bitmap): Bitmap {
