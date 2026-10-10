@@ -160,6 +160,9 @@ private fun EquipmentImportReviewDialog(
                         result.issues.forEach { issue ->
                             Text("⚠ " + issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                         }
+                        if (result.issues.isNotEmpty() && result.rawLines.isNotEmpty()) {
+                            ImportOcrDebug(result.rawLines)
+                        }
                     }
                 }
 
@@ -194,6 +197,21 @@ private fun EquipmentImportReviewDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+@Composable
+private fun ImportOcrDebug(lines: List<String>) {
+    var expanded by remember(lines) { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) {
+        Text(if (expanded) "Hide OCR text" else "Show OCR text")
+    }
+    if (expanded) {
+        Text(
+            lines.joinToString("\n"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
