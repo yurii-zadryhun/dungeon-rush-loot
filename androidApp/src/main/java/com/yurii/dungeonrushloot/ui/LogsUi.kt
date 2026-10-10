@@ -37,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.weight
 import com.yurii.dungeonrushloot.app.AppGraph
 import com.yurii.dungeonrushloot.model.DecisionLogEntry
 import com.yurii.dungeonrushloot.model.LogSession
