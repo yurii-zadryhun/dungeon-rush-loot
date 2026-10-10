@@ -4,7 +4,9 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from .config import EXCEPTIONAL_SKILLS, MAX_STATS, MIN_STATS, RARITY_TIERS, SKILLS, TARGET_PACKAGE
+from .config import (EXCEPTIONAL_SKILLS, MAX_EXCEPTIONAL_AFFIXES, MAX_STATS,
+                     MIN_EXCEPTIONAL_AFFIXES, MIN_STATS, RARITY_NORMAL_AFFIX_COUNT,
+                     RARITY_TIERS, SKILLS, TARGET_PACKAGE)
 from .core import LootDecisionEngine
 from .domain import Action, Box, Comparison, ComparisonStatus, EquipmentSlot, OcrSpan, ParsedItem, ParsedStat, ScoringStrategy
 from .equipment import EquipmentCodec, EquipmentStateError, InMemoryEquipmentRepository
@@ -18,8 +20,14 @@ from .ui_geometry import EQUIPMENT_IMPORT_CROP, EQUIPMENT_IMPORT_LEVEL_CROP, LOO
 
 def app_config_json() -> str:
     payload = {
-        "schema": 3,
+        "schema": 4,
         "affix_bounds": {"min": MIN_STATS, "max": MAX_STATS},
+        "rarity_normal_affixes": RARITY_NORMAL_AFFIX_COUNT,
+        "exp_exceptional_bounds": {
+            "min": MIN_EXCEPTIONAL_AFFIXES,
+            "max": MAX_EXCEPTIONAL_AFFIXES,
+        },
+        "divine_wings_normal_affixes": 5,
         "target_package": TARGET_PACKAGE,
         "crop": LOOT_UI.crop.to_dict(),
         "equipment_import_crop": EQUIPMENT_IMPORT_CROP.to_dict(),
