@@ -302,8 +302,11 @@ A process restart must not silently resume auto-tapping. User must explicitly St
 - `29d2521`: Shared `LootItemParser` now parses signed decimal values and textual names separately; tolerates % glyph variants (`l%`, `I%`, `l.`, `°`) and a missing percent only with explicit sign, known name, valid numeric cap and sign. It **never fuzzy repairs digits**. Removes `Lvl` tokens from affix text wherever positioned, combines wrapped labels, rejects ambiguous/conflicting levels and malformed numeric rows.
 - `5f91ae5`, `944daa0`, `8cd9de1`: Loot card splitter recognizes two-line catalog titles (e.g. `[EXP] Crimson` + `Backpack`), keeps rarity headings, does not mistake an affix or category label for a title; uses the canonical extracted item catalog and skips non-title rows before expensive fuzzy matching.
 - `74c0266`, `587dc28`: Cape fixed Damage/Health intrinsic values are explicitly allowed in the item screenshot importer, then independently checked against Cape progression; live loot affix caps remain strict.
-- `6048ee9`: `tests/test_loot_ocr_variants.py` covers six standard slots and dozens of variants per slot: five title/rarity layouts, six level positions, five level-prefix formats, seven percentage glyph variations, known OCR textual typos/comma decimals, cross-line affix labels, grouped OCR elements with y-coordinate jitter, bridge/scoring integration, and fail-closed invalid values/missing fields/duplicates/contradictory levels.
+- `6048ee9`: `tests/test_loot_ocr_variants.py` covers six standard slots and dozens of variants per slot: five title/rarity layouts, six level positions, five level-prefix formats, ten percentage glyph variations, known OCR textual typos/comma decimals, cross-line affix labels, grouped OCR elements with y-coordinate jitter, bridge/scoring integration, and fail-closed invalid values/missing fields/duplicates/contradictory levels.
 - `9991f7c`: Test code cleanup.
+- `694b514`: historical Melee tests now require CHECK rather than unsafe unconditional SELL with no validated loadout.
+- `b1aecd3`: missing-percent numeric affixes are never treated as title fragments.
+- `3850048`, `7ef4fb8`: bounded glyph variants include OCR `o` / `O` / `º` after signed decimals, with 10 variants exercised in matrix.
 - Prior Auto fixes remain: 2.5×/3.5× line OCR; raw auto diagnostics in global application log; safe item/slot validation; fresh verification; disabled blind Sell confirmation.
 
 ### Verification status and next steps
