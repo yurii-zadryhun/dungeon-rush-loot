@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import unittest
 from dataclasses import dataclass
-from itertools import product
 
 from src.android_bridge import evaluate_spans_json
 from src.domain import Box, EquipmentSlot, OcrLine, OcrSpan
