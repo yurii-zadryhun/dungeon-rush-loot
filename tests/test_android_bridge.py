@@ -144,24 +144,24 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(result["action"], "sell")
 
     def test_plain_catalog_titles_without_exp_still_work_on_desktop(self):
-        # Plain titles are valid only when every stat is a normal affix.
+        # Legendary has exactly 2 ordinary rolls; neither title is [EXP].
         payload = _equipment()
         payload["helmet"] = {
-            "title": "Divine Celestial Helmet",
-            "rarity": "Divine", "level": 87,
+            "title": "Legendary Celestial Helmet",
+            "rarity": "Legendary", "level": 87,
             "stats": {"health": 8.21, "lifesteal": 11.0},
         }
         texts = [
-            "Divine", "Celestial Helmet", "Lvl 87",
+            "Legendary", "Celestial Helmet", "Lvl 87",
             "+8.21% Health", "+11.00% Lifesteal",
-            "Immortal", "Infernal Cape", "Lvl 12",
+            "Legendary", "Infernal Cape", "Lvl 12",
             "+4.21% Health", "+7.02% Critical Chance",
         ]
         spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
         result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(payload), "universal"))
         self.assertEqual(result["status"], "ok", result["message"])
-        self.assertEqual(result["equipped"]["rarity"], "Divine")
-        self.assertEqual(result["candidate"]["rarity"], "Immortal")
+        self.assertEqual(result["equipped"]["rarity"], "Legendary")
+        self.assertEqual(result["candidate"]["rarity"], "Legendary")
         self.assertEqual(result["slot"], "helmet")
 
     def test_standalone_range_marker_is_not_an_item_title(self):
