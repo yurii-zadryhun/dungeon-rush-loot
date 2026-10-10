@@ -40,6 +40,8 @@ data class AppConfig(
     val slots: List<String>,
     val rarities: List<RarityDefinition>,
     val skills: List<SkillDefinition>,
+    val minimumAffixes: Int,
+    val maximumAffixes: Int,
 ) {
     companion object {
         fun fromJson(raw: String): AppConfig {
@@ -69,6 +71,8 @@ data class AppConfig(
                 slots = slots,
                 rarities = rarities,
                 skills = skills,
+                minimumAffixes = json.getJSONObject("affix_bounds").getInt("min"),
+                maximumAffixes = json.getJSONObject("affix_bounds").getInt("max"),
             )
         }
     }
