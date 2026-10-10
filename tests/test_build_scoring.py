@@ -158,6 +158,10 @@ class EquipmentRepositoryTest(unittest.TestCase):
                     stat("damage", 15),
                 ),
             )
+            # The new item has a Triple Hit exceptional roll, so the
+            # persisted title must retain the actual [EXP] marker.
+            from dataclasses import replace
+            candidate = replace(candidate, title="Divine [EXP] Void Ring")
             repository.replace(EquipmentSlot.RING, candidate)
 
             self.assertEqual(repository.snapshot().slot_of(candidate), EquipmentSlot.RING)
