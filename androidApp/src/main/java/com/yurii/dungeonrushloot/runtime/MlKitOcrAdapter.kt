@@ -69,12 +69,13 @@ class MlKitOcrAdapter : OcrAdapter {
         require(scale >= 1f)
 
         val bitmap = frame.bitmap
-        val left = (crop.left * bitmap.width).roundToInt().coerceIn(0, bitmap.width - 1)
-        val top = (crop.top * bitmap.height).roundToInt().coerceIn(0, bitmap.height - 1)
-        val right = (crop.right * bitmap.width).roundToInt().coerceIn(left + 1, bitmap.width)
-        val bottom = (crop.bottom * bitmap.height).roundToInt().coerceIn(top + 1, bitmap.height)
+        val roi = OcrCropPixels.from(crop, bitmap.width, bitmap.height)
+        val left = roi.left
+        val top = roi.top
+        val right = roi.right
+        val bottom = roi.bottom
 
-        val cropped = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+        val cropped = Bitmap.createBitmap(bitmap, left, top, roi.width, roi.height)
         val processed = if (scale > 1.001f) {
             Bitmap.createScaledBitmap(
                 cropped,
