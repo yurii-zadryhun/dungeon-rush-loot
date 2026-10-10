@@ -217,7 +217,7 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
             "+30.50% Attack Speed",
         ]
         result = self.parser.parse_lines([line(t, i * 35) for i, t in enumerate(texts)])
-        self.assertIn("Wings expected 5 affixes; parsed 4.", result.issues)
+        self.assertTrue(any("Unparsed affix" in issue for issue in result.issues), result.issues)
 
     def test_wings_and_cape_change_whole_build_metrics(self):
         rows = []
