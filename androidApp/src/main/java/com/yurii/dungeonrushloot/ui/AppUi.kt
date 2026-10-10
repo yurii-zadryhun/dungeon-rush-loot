@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yurii.dungeonrushloot.app.AppGraph
 import com.yurii.dungeonrushloot.runtime.LootAccessibilityService
+import com.yurii.dungeonrushloot.runtime.OcrDebugCapture
 
 @Composable
 fun DungeonRushLootApp(graph: AppGraph) {
@@ -94,6 +95,9 @@ private fun AutoScreen(
     val serviceConnected by LootAccessibilityService.connected.collectAsState()
     val activeSessionId by graph.logs.activeSessionId.collectAsState()
     val logRevision by graph.logs.revision.collectAsState()
+    val debugState by graph.ocrDebugCapture.state.collectAsState()
+    val debugPending = debugState is OcrDebugCapture.State.Armed ||
+        debugState is OcrDebugCapture.State.Capturing
 
     val validation = remember(equipmentJson) {
         graph.bridge.validateEquipment(equipmentJson)
@@ -157,7 +161,7 @@ private fun AutoScreen(
                     graph.preferences.setEnabled(true)
                 }
             },
-            enabled = enabled || (serviceConnected && validation.valid),
+            enabled = !debugPending && (enabled || (serviceConnected && validation.valid)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (enabled) "STOP AUTO" else "START AUTO")
@@ -170,6 +174,46 @@ private fun AutoScreen(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
             )
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Text("One-shot OCR diagnostic", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Open the loot popup in the game, return here and arm capture, then switch " +
+                "back to Dungeon Rush. The next Accessibility screenshot and the exact " +
+                "ML Kit input are saved as one ZIP in Downloads. No automated taps are sent. " +
+                "The ZIP includes your full game screen, so review it before sharing.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        when (val state = debugState) {
+            is OcrDebugCapture.State.Armed -> {
+                Text("Armed. Switch to Dungeon Rush with the loot popup open.")
+                TextButton(onClick = { graph.ocrDebugCapture.cancel() }) {
+                    Text("Cancel capture")
+                }
+            }
+            is OcrDebugCapture.State.Capturing -> Text("Capturing and saving ZIP...")
+            is OcrDebugCapture.State.Saved ->
+                Text("Saved to Downloads: " + state.filename + ". Share that ZIP here.")
+            is OcrDebugCapture.State.Failed ->
+                Text("Capture failed: " + state.reason, color = MaterialTheme.colorScheme.error)
+            OcrDebugCapture.State.Idle -> Unit
+        }
+        Button(
+            onClick = {
+                // Stop Auto before arming, including any pending user session.
+                // The controller's diagnostic path never dispatches a touch.
+                if (enabled) {
+                    graph.preferences.setEnabled(false)
+                    graph.logs.endSession()
+                }
+                graph.ocrDebugCapture.arm()
+            },
+            enabled = serviceConnected && !debugPending,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (debugState is OcrDebugCapture.State.Failed) "Retry OCR capture"
+                 else "Capture next game OCR as ZIP")
         }
 
         Spacer(Modifier.height(4.dp))
