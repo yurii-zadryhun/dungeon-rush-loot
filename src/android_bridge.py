@@ -215,6 +215,11 @@ def _optional_float(value) -> float | None:
 
 
 def _enrich_android_event(event: dict[str, Any], comparison: Comparison) -> None:
+    # This is an ITEM identity, not a serialized OCR event. Raw line strings,
+    # confidence, ordering and bounding boxes legitimately differ frame-to-frame.
+    from .verification import verification_key
+
+    event["verification_key"] = verification_key(comparison)
     target = LOOT_UI.targets.get(comparison.action)
     event["touch_target"] = target.to_dict() if target else None
     event["needs_sell_confirmation"] = bool(
