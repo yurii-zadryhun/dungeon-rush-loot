@@ -284,23 +284,47 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO (updated 2026-10-10 after first successful device install)
+## Current immediate TODO (updated 2026-10-10 after live Auto report)
 
-1. **Android install fixed:** CI for the previous APK was successful, and user installed it on Samsung S24 Ultra by extracting the APK from ZIP before installing. Parsing failure inside RAR was an install-method issue, not an APK defect.
-2. **Application diagnostics confirmed on device:** User exported `dungeon-rush-app-log.jsonl`. It contained 46 valid JSONL records including 32 individual OCR passes for 8 screenshots, parser results for each screenshot, and a validation failure summary. Do not request another old screenshot or assume logging is broken.
-3. **Actual first-device baseline, import order:** cape CHECK (80% primaries OCR as `+80.0l. Damage`/`+80.0l Health`), ring OK, necklace OK, backpack OK, wings CHECK (missing percent in ranged damage and corrupted percent in critical chance, parsed 3/5), gloves CHECK (corrupted percent in melee damage and missing percent in triple hit, parsed 3/5), helmet CHECK (OCR entirely missed Lvl 87), weapon OK. **Four of eight valid.**
-4. **Fixes pushed after examining exported raw log:**
-   - `d19995e`: bounded import-only percent separator recovery. Requires unchanged signed decimal, known skill label and cap validation; Cape intrinsic additionally validated against APK-derived level progression. Does **not** fuzzy-repair numeric digits.
-   - `a4158ec` + `6c6708e`: multi-scale ML Kit merge prefers an intact percentage over longer corrupted text.
-   - `c60dace`: tight icon-footer level crop rather than entire decorated icon, calibrated to real screenshots.
-   - `ac601f1` + `2e7380f`: on missing level, one additional OCR pass isolating bright text on white background. Each pass still logs raw output.
-   - `dce61ec`: regression tests for real Cape/Wings/Gloves OCR strings, numeric bounds fail-closed.
-5. **Next task:** Verify the *new* CI build (head around `2e7380f`). Workflow checks via connected GitHub exposed no push-triggered runs; this is neither proof of success nor failure. Don't poll synchronously or repeatedly.
-6. **Then user:** Install new APK; import the same 8 screenshots again, inspect review screen and report which fail. If any remain unresolved, export and upload a **new** application JSONL. Application log is persistent across upgrades: filter by the latest import `started` event, do not confuse with the previous attempt.
-7. **Priority:** If helmet OCR remains blank even with tight level crop and bright-text isolation, use evidence from new passes to decide further preprocessing; do not guess a level from primary stats without validating the EXP +11 enhancement multiplier and uniqueness. Keep fail-closed.
-8. Once all 8 reliably import, resume Auto live tests; consider separate future hardening for actual sell confirmation detection.
+### Verified on device from user's exported application JSONL
 
-Do not claim any new fixes have been successfully built or device-tested until verified. Historical four-of-eight baseline is evidence from previous APK only.
+- User installed the previous APK successfully after extracting from ZIP.
+- Second import attempt at 16:49 UTC on previous APK was **validated and saved: 8/8** items, with correct title, slot, rarity, level and stats, including Wings/Cape/Helmet. The uploaded second `dungeon-rush-app-log.jsonl` holds both import attempts.
+- The second application log has **no Auto-loot decision/observation events**. It cannot establish the exact failure of the in-game popup; do not claim a runtime fix until device testing.
+- User showed a full-screen 709×1536 screenshot of the **live loot comparison popup**, not the equipment screenshot importer: equipped Divine [EXP] Celestial Helmet Lv87, 5 stats; candidate Immortal [EXP] Infernal Cape Lv12, 4 stats. Infernal Cape is a *helmet* per APK catalog despite its name. This is the next failing domain.
+
+### Root causes found by code inspection
+
+1. Android live OCR was **1× ML Kit word-element recognition**, while the now-working screenshot importer used 2.5×/3.5× **line-level** OCR.
+2. `LootCardSplitter` used the two [EXP] title rows as hard boundaries, **discarding preceding standalone `Divine` / `Immortal` rarity labels**. `LootItemParser` consequently had no rarity in the reconstructed title. It also guessed boundaries via a risky percentage-gap fallback on ambiguous titles.
+3. `[Range]` / `[Melee]` standing alone could be misidentified as a title; separate `[Melee]` was not checked by the actual melee-rejection logic.
+4. Live comparer only validated rarity/level and total affix count; no catalog slot agreement, duplicate-affix checks, value cap checks, or sign checks. Melee rejection happened *before* validation.
+5. Two-screenshot verification compared candidate rarity/level/stats, but ignored both item titles, slot and equipped item identity.
+6. Blind sell confirmation tapped fixed coordinates, and image-comparison failures could be treated as successful changes.
+7. No raw Auto OCR observations were exported via global application diagnostics; session logs were separate.
+
+### Changes now pushed to android-live (not yet device-verified)
+
+- `82594a0`: deterministic two-card split with preserved standalone rarity headers; ambiguous title count -> CHECK instead of percentage-gap guessing.
+- `ec2918b` / `89f1063`: validate full 4-5 affixes, signs, numeric caps, unique skill labels, known game catalog slots for both candidates and equipped, and **then** apply melee policy.
+- `61a1e95` / `6019e73`: live OCR now uses 2.5× ML Kit lines, with an adapter-level 3.5× retry on CHECK.
+- `2ff1a14`, `f45f26b`, `c585a2b`: capture raw live OCR spans and parsed Python event in persistent Application log, logging on material decision transitions or every 15s; slow retry on persistent CHECK; do not perform fixed-position sell confirmation.
+- `5aa17ac`: separate [Melee] line recognized.
+- `1b02784`: fresh-screen verification compares both item titles, equipped and candidate stats, levels, rarity and slot.
+- `070549d`: negative companion cooldown is a beneficial reduction, not zero contribution.
+- `5acce93`: invalid bitmap dimension/signature comparison no longer counts as success.
+- `4cde0cc`, `552d93f`, `4d38736`: added screenshot-accurate regression and fail-closed tests; updated legacy comparison fixture to use catalog names.
+
+### Immediate next actions
+
+1. **Check GitHub Android APK CI once for the newest head**; no polling. Python and Kotlin tests have not been executed locally in this chat and latest build success must not be asserted without CI result.
+2. Install the new APK only after successful build.
+3. Test Auto first on the same live popup. Verify that incomplete or ambiguous reads produce CHECK/no tap; on complete same-slot screen expect a deterministic Sell/Equip decision. Manually monitor taps; STOP remains available.
+4. Export the new **Application log** (contains new `auto_ocr.observation` events with original 2.5× and optionally 3.5× spans, parsed decisions, image dimensions) and attach it. Since it persists across updates, inspect the latest events.
+5. If Auto still gets fields wrong, use those raw observations for exact fixes instead of guessing from screenshots. If ML Kit accuracy remains poor despite targeted preprocessing/crops, evaluate an Android-compatible Paddle Lite/ONNX-based OCR adapter without duplicating Python domain logic.
+6. Revisit Equip post-touch state confirmation and real sell-confirmation modal detection after OCR is reliable. Until then, confirmation-required sells are manual/no tap.
+
+**Priority: correct, fail-closed decisions over tap throughput.** Shared Python domain stays authoritative and desktop Paddle remains unchanged.
 
 ## Useful game/reverse-engineering context
 
