@@ -26,10 +26,19 @@ class PythonDecisionBridge {
     }
 
 
-    fun importEquipment(spans: List<OcrSpanDto>): EquipmentImportResult {
+    fun importEquipment(
+        spans: List<OcrSpanDto>,
+        levelSpans: List<OcrSpanDto> = emptyList(),
+    ): EquipmentImportResult {
         val payload = JSONArray()
         spans.forEach { payload.put(it.toJson()) }
-        val raw = module.callAttr("import_equipment_spans_json", payload.toString()).toString()
+        val levelPayload = JSONArray()
+        levelSpans.forEach { levelPayload.put(it.toJson()) }
+        val raw = module.callAttr(
+            "import_equipment_spans_json",
+            payload.toString(),
+            levelPayload.toString(),
+        ).toString()
         return EquipmentImportResult.fromJson(raw)
     }
 
