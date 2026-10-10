@@ -8,6 +8,7 @@ from src.domain import Box, EquipmentSlot, OcrLine
 from src.equipment import EquipmentCodec
 from src.equipment_import import EquipmentScreenshotParser
 from src.game_catalog import match_standard_item
+from src.text import fuzzy_skill_name
 from src.scoring import BuildMetricsAggregator
 
 
@@ -19,6 +20,15 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
     def setUp(self):
         self.parser = EquipmentScreenshotParser()
 
+    def test_ocr_levenshtein_recovers_item_name_glyph_confusions(self):
+        match = match_standard_item(["[EXP] +11 Dread Neck1ace"], primary_kind="health")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.slot, EquipmentSlot.NECKLACE)
+
+    def test_ocr_levenshtein_recovers_affix_glyph_confusions(self):
+        name, confidence = fuzzy_skill_name("Attack 5peed")
+        self.assertEqual(name, "attack speed")
+        self.assertGreater(confidence, 0.9)
     def test_apk_catalog_handles_names_which_do_not_describe_the_slot(self):
         fixtures = {
             "Celestial Lyre": EquipmentSlot.BACKPACK,
