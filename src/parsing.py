@@ -18,7 +18,11 @@ STAT_NUMBER_RE = re.compile(
     r"\s*(?P<suffix>%(?:\s*%)*|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
-LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
+# Lv0124 and LvU 106 were observed on the Android device. Only the
+# zero-prefixed 3-digit form is accepted; ordinary Lv0 is not a level.
+LEVEL_MARKER_RE = re.compile(
+    r"\b(?:lvl|lvi|lvu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*\d{1,3}\b", re.I
+)
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
 # A bullet is recovered as a positive separator ONLY when an explicit level
 # marker occurs on the same row, followed by an intact decimal stat value.
@@ -111,6 +115,7 @@ class LootCardSplitter:
                 cls._title_fragment(previous)
                 and cls._title_fragment(text)
                 and not cls._is_item_title(previous)
+                and not cls._is_item_title(text)
                 and match_standard_item([previous + " " + text]) is not None
             ):
                 # This row completes a two-line title already discovered at
@@ -126,7 +131,9 @@ class LootCardSplitter:
         if index + 1 >= len(lines) or not cls._title_fragment(text):
             return None
         following = normalize_text(lines[index + 1].text)
-        if not cls._title_fragment(following):
+        if not cls._title_fragment(following) or cls._is_item_title(following):
+            # E.g. "Taken" from a wrapped Critical Damage Taken affix
+            # followed by a complete "Immortal [EXP] Scarlet Necklace".
             return None
         combined = f"{text} {following}"
         return combined if match_standard_item([combined]) is not None else None
@@ -172,11 +179,32 @@ class LootItemParser:
         )
 
     def _level(self, lines: Sequence[OcrLine]) -> int | None:
+        # A game HUD "Lvl 123" sometimes remains visible to the right of the
+        # loot popup. Ignore only standalone level spans clearly outside the
+        # stat-text boundary, not contradictory levels inside the card.
+        stat_rights = [
+            line.box.right for line in lines
+            if STAT_NUMBER_RE.search(self._strip_level_marker(normalize_text(line.text)))
+            and ("%" in line.text or "+" in line.text or "-" in line.text)
+        ]
+        right_boundary = max(stat_rights) if stat_rights else None
         levels: set[int] = set()
         for line in lines:
             text = normalize_text(line.text)
-            for match in LEVEL_RE.finditer(text):
-                level = self._normalize_ocr_level(int(match.group(1)))
+            matches = list(LEVEL_MARKER_RE.finditer(text))
+            if not matches:
+                continue
+            remainder = self._strip_level_marker(text).strip(" ()")
+            if (
+                not remainder and right_boundary is not None
+                and line.box.left > right_boundary + 20
+            ):
+                continue
+            for match in matches:
+                number = re.search(r"(\d{1,3})\b", match.group())
+                if number is None:
+                    continue
+                level = self._normalize_ocr_level(int(number.group(1)))
                 if level is not None:
                     levels.add(level)
         return next(iter(levels)) if len(levels) == 1 else None
@@ -321,6 +349,11 @@ class LootItemParser:
     @staticmethod
     def _clean_label(raw: str) -> str:
         text = LEVEL_MARKER_RE.sub(" ", normalize_text(raw))
+        # Rare ML Kit lines contain the game's adjacent x4 reward badge
+        # appended to an otherwise complete affix: "Attack Speed BSX4".
+        # Strip ONLY a trailing, visually identified badge, never free-form
+        # unrecognized words or digits inside an affix name.
+        text = re.sub(r"\s+B[S]?X4\s*$", "", text, flags=re.I)
         return re.sub(r"\s+", " ", text).strip(" :-·•")
     
     @staticmethod
