@@ -196,17 +196,7 @@ class ItemComparer:
             return self._check(equipped, candidate, "Candidate item is not in the equipped slot (game catalog).")
 
         if candidate.melee:
-            return Comparison(
-                status=ComparisonStatus.OK,
-                action=Action.SELL,
-                candidate=candidate,
-                equipped=equipped,
-                candidate_score=None,
-                equipped_score=None,
-                message="Melee candidate hard-rejected after full OCR and slot validation.",
-                equipment_slot=slot,
-                rejection_reason="melee",
-            )
+            return self._melee_rejection(equipped, candidate, slot)
 
         current_score = self.scorer.score(loadout, protected_slot=slot)
         candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
@@ -251,15 +241,18 @@ class ItemComparer:
         return MIN_STATS <= len(item.stats) <= MAX_STATS
 
     @staticmethod
-    def _melee_rejection(equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
+    def _melee_rejection(
+        equipped: ParsedItem, candidate: ParsedItem, slot: EquipmentSlot,
+    ) -> Comparison:
         return Comparison(
-            ComparisonStatus.OK,
-            Action.SELL,
-            candidate,
-            equipped,
-            None,
-            None,
-            "Melee candidate hard-rejected.",
+            status=ComparisonStatus.OK,
+            action=Action.SELL,
+            candidate=candidate,
+            equipped=equipped,
+            candidate_score=None,
+            equipped_score=None,
+            message="Melee candidate hard-rejected after full OCR and slot validation.",
+            equipment_slot=slot,
             rejection_reason="melee",
         )
 
