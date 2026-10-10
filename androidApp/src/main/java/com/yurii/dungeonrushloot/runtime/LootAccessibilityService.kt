@@ -26,7 +26,7 @@ class LootAccessibilityService : AccessibilityService() {
         val controller = AndroidLootController(
             screenCapture = AccessibilityScreenshotAdapter(this),
             ocr = ocrAdapter,
-            touch = AccessibilityTouchAdapter(this),
+            touch = AccessibilityTouchAdapter(this, foreground, graph.bridge.config.targetPackage),
             foreground = foreground,
             equipment = graph.equipment,
             automation = graph.preferences,
@@ -47,9 +47,8 @@ class LootAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (::foreground.isInitialized) {
-            foreground.onAccessibilityEvent(event)
-        }
+        // No cached last-event package: it can remain Dungeon Rush while
+        // Samsung Recent Apps is already the focused application.
     }
 
     override fun onInterrupt() {
