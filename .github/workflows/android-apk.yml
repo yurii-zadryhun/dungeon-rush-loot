@@ -15,6 +15,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-live-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -81,5 +85,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          LATEST_SHA="$(git ls-remote origin refs/heads/android-live | cut -f1)"
+          if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Skipping rolling release: $GITHUB_SHA is not current android-live head ($LATEST_SHA)."
+            exit 0
+          fi
+
           gh release delete android-live-latest --cleanup-tag --yes || true
-          gh release create android-live-latest             dist/DungeonRushLoot.apk             dist/DungeonRushLoot.apk.sha256             --target "$GITHUB_SHA"             --prerelease             --title "Android live build"             --notes "Signed personal-testing APK built from android-live at $GITHUB_SHA."
+          gh release create android-live-latest \
+            dist/DungeonRushLoot.apk \
+            dist/DungeonRushLoot.apk.sha256 \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Android live build" \
+            --notes "Signed personal-testing APK built from android-live at $GITHUB_SHA."
