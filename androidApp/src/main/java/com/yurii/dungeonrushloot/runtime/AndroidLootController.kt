@@ -29,6 +29,7 @@ class AndroidLootController(
     private var lastRuntimeError: String? = null
     private var lastRuntimeErrorAt: Long = 0
     private var lastOcrDiagnosticAt: Long = 0
+    private var lastOcrDiagnosticSignature: String? = null
 
     suspend fun run() {
         while (coroutineContext.isActive) {
@@ -185,7 +186,16 @@ class AndroidLootController(
         enhanced: List<com.yurii.dungeonrushloot.model.OcrSpanDto>?,
     ) {
         val now = System.currentTimeMillis()
-        if (now - lastOcrDiagnosticAt < OCR_DIAGNOSTIC_INTERVAL_MS) return
+        val signature = listOf(
+            result.status,
+            result.action,
+            result.candidateKey ?: result.message,
+        ).joinToString("|")
+        if (
+            signature == lastOcrDiagnosticSignature &&
+            now - lastOcrDiagnosticAt < OCR_DIAGNOSTIC_INTERVAL_MS
+        ) return
+        lastOcrDiagnosticSignature = signature
         lastOcrDiagnosticAt = now
 
         fun spansJson(spans: List<com.yurii.dungeonrushloot.model.OcrSpanDto>): JSONArray =
