@@ -67,12 +67,9 @@ chaquopy {
             src = true
         }
     }
-    sourceSets {
-        getByName("main") {
-            // The APK embeds the same Python package used by the desktop runtime.
-            srcDir("..")
-        }
-    }
+    // Python sources live at androidApp/src/main/python. That directory contains a
+    // symlink to the repository's shared src package, so Android packages the exact
+    // same Python domain without making the repository root a Gradle task input.
 }
 
 dependencies {
