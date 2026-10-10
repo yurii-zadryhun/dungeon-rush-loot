@@ -26,6 +26,17 @@ interface ForegroundAppAdapter {
     fun currentPackage(): String?
 }
 
+interface EquipmentStateAdapter {
+    fun currentJson(): String
+    fun replaceRaw(raw: String)
+}
+
+interface AutomationStateAdapter {
+    fun isEnabled(): Boolean
+    fun strategyName(): String
+}
+
 interface DecisionLogAdapter {
     fun append(event: DecisionEvent, runtimeMessage: String? = null)
+    fun appendSystem(message: String)
 }

@@ -2,11 +2,12 @@ package com.yurii.dungeonrushloot.data
 
 import android.content.Context
 import com.yurii.dungeonrushloot.model.EquipmentDraft
+import com.yurii.dungeonrushloot.runtime.EquipmentStateAdapter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
 
-class EquipmentStore(context: Context) {
+class EquipmentStore(context: Context) : EquipmentStateAdapter {
     private val prefs = context.getSharedPreferences("equipment", Context.MODE_PRIVATE)
     private val _rawJson = MutableStateFlow(
         prefs.getString(KEY_JSON, null) ?: defaultEquipmentJson(),
@@ -47,7 +48,9 @@ class EquipmentStore(context: Context) {
         replaceRaw(root.toString())
     }
 
-    fun replaceRaw(raw: String) {
+    override fun currentJson(): String = _rawJson.value
+
+    override fun replaceRaw(raw: String) {
         prefs.edit().putString(KEY_JSON, raw).apply()
         _rawJson.value = raw
     }

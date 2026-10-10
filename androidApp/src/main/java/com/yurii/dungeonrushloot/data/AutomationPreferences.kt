@@ -1,10 +1,11 @@
 package com.yurii.dungeonrushloot.data
 
 import android.content.Context
+import com.yurii.dungeonrushloot.runtime.AutomationStateAdapter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-class AutomationPreferences(context: Context) {
+class AutomationPreferences(context: Context) : AutomationStateAdapter {
     private val prefs = context.getSharedPreferences("automation", Context.MODE_PRIVATE)
 
     private val _enabled = MutableStateFlow(prefs.getBoolean(KEY_ENABLED, false))
@@ -23,6 +24,10 @@ class AutomationPreferences(context: Context) {
         prefs.edit().putString(KEY_STRATEGY, value).apply()
         _strategy.value = value
     }
+
+    override fun isEnabled(): Boolean = _enabled.value
+
+    override fun strategyName(): String = _strategy.value
 
     companion object {
         private const val KEY_ENABLED = "enabled"

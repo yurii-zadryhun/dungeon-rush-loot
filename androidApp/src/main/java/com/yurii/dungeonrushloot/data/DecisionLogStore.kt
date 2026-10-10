@@ -3,19 +3,20 @@ package com.yurii.dungeonrushloot.data
 import android.content.Context
 import com.yurii.dungeonrushloot.model.DecisionEvent
 import com.yurii.dungeonrushloot.model.DecisionLogEntry
+import com.yurii.dungeonrushloot.runtime.DecisionLogAdapter
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
 
-class DecisionLogStore(context: Context) {
+class DecisionLogStore(context: Context) : DecisionLogAdapter {
     private val file = File(context.filesDir, "decisions.jsonl")
     private val _entries = MutableStateFlow(loadEntries())
     val entries: StateFlow<List<DecisionLogEntry>> = _entries
 
     @Synchronized
-    fun append(event: DecisionEvent, runtimeMessage: String? = null) {
+    override fun append(event: DecisionEvent, runtimeMessage: String?) {
         val json = JSONObject(event.rawJson)
         json.put(
             "runtime",
@@ -27,7 +28,7 @@ class DecisionLogStore(context: Context) {
     }
 
     @Synchronized
-    fun appendSystem(message: String) {
+    override fun appendSystem(message: String) {
         val json = JSONObject()
             .put("schema", 1)
             .put("timestamp", Instant.now().toString())
