@@ -45,3 +45,10 @@ LOOT_UI = LootUiProfile(
         Action.CONFIRM_SELL: RelativeRect(0.20, 0.725, 0.44, 0.765),
     },
 )
+
+
+# Static profile for the current-equipment screenshots supplied for the Android
+# importer (709x1536 layout). It clips tightly to the foreground item modal and
+# excludes the aggregate build stats visible underneath it. Later this can be
+# replaced by popup detection without changing import/parsing logic.
+EQUIPMENT_IMPORT_CROP = RelativeRect(0.075, 0.425, 0.925, 0.735)
