@@ -224,6 +224,14 @@ class AndroidLootController(
             details = JSONObject()
                 .put("width", frame.bitmap.width)
                 .put("height", frame.bitmap.height)
+                // The OCR adapter receives this exact ROI. Keeping it in the
+                // raw diagnostics separates crop regressions from background
+                // HUD text physically inside the correctly cropped region.
+                .put("ocr_crop", JSONObject()
+                    .put("left", config.crop.left)
+                    .put("top", config.crop.top)
+                    .put("right", config.crop.right)
+                    .put("bottom", config.crop.bottom))
                 .put("primary_scale", 2.5)
                 .put("primary_spans", spansJson(primary))
                 .put("primary_result", JSONObject(initial.rawJson))
