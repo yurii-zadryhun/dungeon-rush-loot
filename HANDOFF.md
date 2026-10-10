@@ -21,7 +21,46 @@ Android branch: `android-live`
 
 Latest **verified production APK source commit**: `fade8fef74e47edef9e3af0feb71aef29efb5321`. Android workflow `38082125026` and Python CI workflow `38082125040` succeeded, and `android-live-latest` release's target_commitish matches exactly. All 92 shared Python tests passed on 3.11 and 3.12; Android JVM tests, Gradle build, signature and publication succeeded. Subsequent documentation-only commits may advance the branch SHA; verify source SHA of the APK separately.
 
-## Current immediate TODO — forensic ZIP and exceptional marker regression (2026-10-10)
+## Current immediate TODO — icon level OCR and diagnostic cleanup (2026-10-11)
+
+User's latest live evidence: `session-20261010-213450-023.jsonl` and the
+Divine [EXP] Celestial Helmet Lv87 vs Immortal [EXP] Dread Helm Lv4 screenshot.
+At 21:35:16 and 21:35:31 the full-popup OCR captured both known titles
+and all expected 5/4 affixes (including the exceptional rolls), **but not
+a single level string for either card**. Python correctly returned CHECK.
+Changing regex alone cannot parse pixels not returned by ML Kit.
+
+Implementation:
+- `runtime/IconLevelRecovery.kt`: derive two narrow icon-level ROIs from
+  exactly two recognizable item-title rows; cover the label at the bottom of
+  the icon (not adjacent affix text). Reject ambiguous/missing title anchors.
+- `MlKitOcrAdapter.recognizeIconLevels()`: when general OCR fails on level,
+  independently OCR each icon region at 4× in normal and light-on-dark modes.
+  Accept only explicit, recognized `Lvl` text; no number guessing.
+- `AndroidLootController.observe()`: when status is CHECK due to missing
+  rarity/level after full-popup 2.5× and 3.5× passes, append actual recovered
+  icon text and **rerun full Python validation/scoring**. If still unreadable
+  or contradictory, remain CHECK and never Sell/Equip. Log icon level spans
+  in `auto_ocr.observation` for follow-up.
+- `tests/test_android_bridge.py`: reproduces the actual level-free 21:35
+  lines; exercises 25 independent label combinations, one/missing levels,
+  contradictions, corrupted labels and missing titles.
+- `IconLevelRecoveryTest.kt`: checks anchored screen geometry for 709×1536
+  and 1080×2340, 520 label forms, UI noise, ambiguous anchors and invalid
+  screen dimensions.
+- **Removed temporary one-shot debug**: no Auto tab controls, capture state,
+  ZIP exporter, Android service wiring, snapshots or associated tests.
+  `DownloadsLogExporter` is restored to JSONL exports only.
+
+**Next:** Wait for final green Python+Android JVM tests, signed APK and release
+SHA verification. Do not claim device efficacy from JVM/Python CI: only a new
+live game check can show whether ML Kit reads the icon labels. If not, use
+existing `auto_ocr.observation` JSONL for exact diagnostic spans. No
+changes to scoring or Ultimate.
+
+---
+
+## Historical — forensic ZIP and exceptional marker regression (2026-10-10)
 
 New user evidence:
 - `dungeon-rush-ocr-debug-20261010-204511-851.zip`: `screen.png` (1080×2340), `ocr-crop.png` (810×983), `ocr-input.png` (2025×2458), `ocr.json`. **Crucial root cause:** full screenshot is the **Android Recent Apps overview**, showing Dungeon Rush only as a scaled task preview with unrelated other app cards. Bitmap crop from x=135..945 and y=936..1919 was correctly calculated but applied to **Recents preview**, not the live full-screen game, so game's outside-HUD text `Lvl 123` / `BX4` was inside the crop. Original horizontal offsets 0.125/0.875 are correct **for the full-screen game**, do not adjust them or mistake transformed OCR geometry for crop drift.
@@ -38,7 +77,7 @@ Implemented:
 
 ---
 
-## Current immediate TODO — one-shot OCR screenshot ZIP (2026-10-10)
+## Historical — temporary one-shot OCR diagnostic (removed 2026-10-11)
 
 The user confirmed the original 0.125/0.875 horizontal crop exactly matched
 the game popup in their source screenshot (709x1536). Earlier claims that
@@ -347,7 +386,7 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO — new live session OCR failures fixed (2026-10-10)
+## Historical — earlier live session OCR failures (2026-10-10)
 
 User reported session `session-20261010-194809-529.jsonl` with five CHECK OCR events at 19:48–19:49; compared real `ocr_lines` (text, confidence and screen boxes) to `android-live`.
 
