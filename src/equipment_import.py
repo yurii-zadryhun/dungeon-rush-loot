@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from typing import Sequence
 
-from .config import MAX_ITEM_LEVEL, RARITY_TIERS
+from .config import MAX_ITEM_LEVEL, RARITY_TIERS, SKILLS
 from .domain import EquipmentSlot, OcrLine, OcrSpan, ParsedItem, ParsedStat
 from .game_catalog import (
     CatalogMatch,
@@ -18,7 +18,7 @@ from .game_catalog import (
     match_wing_name,
 )
 from .parsing import LootItemParser, OcrLineAssembler
-from .text import LEVEL_RE, canonical_name, is_melee_title, normalize_text
+from .text import LEVEL_RE, PERCENT_RE, canonical_name, fuzzy_skill_name, is_melee_title, normalize_text
 
 ABSOLUTE_PRIMARY_RE = re.compile(
     r"^\s*(damage|health)\s+([0-9]+(?:[.,][0-9]+)?)\s*([kmbtq]?)\b",
@@ -30,6 +30,13 @@ BRACKET_RARITY_RE = re.compile(
 )
 RARITY_WORD_RE = re.compile(
     r"\b(common|uncommon|rare|epic|legendary|mythic|artifact|ancient|immortal|divine|ultimate)\b",
+    re.I,
+)
+
+# Import-only: the screenshot is known to contain percentage affixes.
+# Require an intact signed decimal and a known stat label; never repair digits.
+IMPERFECT_PERCENT_RE = re.compile(
+    r"^\s*([+-]\s*\d{1,3}[.,]\d{1,2})\s*(?:[lI](?:[.,])?)?\s*%?\s+(.+?)\s*$",
     re.I,
 )
 
@@ -110,8 +117,9 @@ class EquipmentScreenshotParser:
         if rarity is None:
             issues.append("Could not parse rarity.")
 
-        parsed_stats = tuple(self.item_parser._stats(lines))
         level = self._level(texts, level_texts)
+        recovered_lines = self._recover_equipment_percents(lines, slot, title, level)
+        parsed_stats = tuple(self.item_parser._stats(recovered_lines))
 
         intrinsic: tuple[ParsedStat, ...] = ()
         affixes = parsed_stats
@@ -188,6 +196,56 @@ class EquipmentScreenshotParser:
             issues=tuple(dict.fromkeys(issues)),
             lines=lines,
         )
+
+    @staticmethod
+    def _recover_equipment_percents(
+        lines: Sequence[OcrLine],
+        slot: EquipmentSlot | None,
+        title: str,
+        level: int | None,
+    ) -> tuple[OcrLine, ...]:
+        if slot is None:
+            return tuple(lines)
+
+        cape_primary = None
+        if slot is EquipmentSlot.CAPE and title and level is not None:
+            try:
+                cape_primary = cape_intrinsic_value(title, level)
+            except (KeyError, ValueError):
+                pass
+
+        recovered = []
+        for line in lines:
+            text = normalize_text(line.text)
+            if PERCENT_RE.search(text):
+                recovered.append(line)
+                continue
+
+            match = IMPERFECT_PERCENT_RE.fullmatch(text)
+            if match is None:
+                recovered.append(line)
+                continue
+
+            numeric, raw_label = match.groups()
+            skill, confidence = fuzzy_skill_name(raw_label)
+            if skill is None or confidence < 0.94:
+                recovered.append(line)
+                continue
+
+            value = float(numeric.replace(" ", "").replace(",", "."))
+            if slot is EquipmentSlot.CAPE and skill in {"damage", "health"}:
+                valid = cape_primary is not None and abs(value - cape_primary) <= 0.35
+            else:
+                valid = abs(value) <= SKILLS[skill].cap + 0.01
+
+            if valid:
+                # Only the separator was recovered. The observed numeric value
+                # remains untouched, and the original OCR line remains logged.
+                recovered.append(replace(line, text=f"{numeric}% {raw_label}"))
+            else:
+                recovered.append(line)
+
+        return tuple(recovered)
 
     @staticmethod
     def _rarity(texts: Sequence[str], slot: EquipmentSlot | None) -> str | None:
