@@ -63,6 +63,27 @@ class FreshVerificationTest {
     }
 
     @Test
+    fun onlyExactMissingExpMarkerErrorTriggersOneMoreObservation() {
+        val first = event()
+        val lostMarker = event(status = "check_ocr").copy(
+            message = "candidate: Immortal requires 0-0 exceptional affixes; parsed 1.",
+        )
+        assertTrue(FreshVerification.retryMissingExp(first, lostMarker))
+        assertFalse(FreshVerification.retryMissingExp(
+            first, event(status = "check_ocr"),
+        ))
+        assertFalse(FreshVerification.retryMissingExp(
+            first, event(status = "ok"),
+        ))
+        assertFalse(FreshVerification.retryMissingExp(
+            event(status = "check_ocr"), lostMarker,
+        ))
+        assertFalse(FreshVerification.retryMissingExp(
+            event(verificationKey = null), lostMarker,
+        ))
+    }
+
+    @Test
     fun changedActionAndSlotFailClosed() {
         assertTrue(FreshVerification.rejectionReason(event(), event(action = "equip"))!!
             .contains("action"))
