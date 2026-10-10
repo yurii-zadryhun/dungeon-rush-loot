@@ -2,6 +2,7 @@ package com.yurii.dungeonrushloot.runtime
 
 import com.yurii.dungeonrushloot.bridge.PythonDecisionBridge
 import com.yurii.dungeonrushloot.data.OcrDebugExporter
+import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.yurii.dungeonrushloot.model.AppConfig
@@ -27,6 +28,7 @@ class AndroidLootController(
     private val debugCapture: OcrDebugCapture,
     private val debugExporter: OcrDebugExporter,
 ) {
+    private val stableForeground = StableForeground(config.targetPackage)
     private var lastHandledCandidate: String? = null
     private var lastHandledAt: Long = 0
     private var lastCheckMessage: String? = null
@@ -53,15 +55,15 @@ class AndroidLootController(
     }
 
     private suspend fun tick() {
+        val gameReady = stableForeground.confirmed(foreground.currentPackage(), SystemClock.elapsedRealtime())
         // This diagnostic works with Auto OFF. It takes one screen of the
         // foreground game, exports it, and NEVER reaches the tap pathway.
         if (debugCapture.state.value is OcrDebugCapture.State.Armed) {
-            if (foreground.currentPackage() != config.targetPackage) return
+            if (!gameReady) return
             if (debugCapture.claim()) captureOneDebugFrame()
             return
         }
-        if (!automation.isEnabled()) return
-        if (foreground.currentPackage() != config.targetPackage) return
+        if (!automation.isEnabled() || !gameReady) return
 
         val equipmentJson = equipment.currentJson()
         val validation = bridge.validateEquipment(equipmentJson)
