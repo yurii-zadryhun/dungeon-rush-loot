@@ -7,18 +7,7 @@ from dataclasses import dataclass
 
 from .adb import AdbDevice
 from .domain import Action
-
-
-@dataclass(frozen=True)
-class RelativeRect:
-    left: float
-    top: float
-    right: float
-    bottom: float
-
-    def pixels(self, size: tuple[int, int]) -> tuple[int, int, int, int]:
-        width, height = size
-        return int(width * self.left), int(height * self.top), int(width * self.right), int(height * self.bottom)
+from .ui_geometry import LOOT_UI, RelativeRect
 
 
 @dataclass(frozen=True)
@@ -30,20 +19,8 @@ class Gesture:
 
 
 class LootButtonLayout:
-    # Safe inner regions observed on the portrait loot popup; relative coordinates
-    # make them resolution-independent while keeping away from button edges.
-    SELL = RelativeRect(0.20, 0.842, 0.44, 0.888)
-    EQUIP = RelativeRect(0.56, 0.842, 0.80, 0.888)
-    CONFIRM_SELL = RelativeRect(0.2, 0.725, 0.44, 0.765)
-
     def target(self, action: Action) -> RelativeRect:
-        if action is Action.SELL:
-            return self.SELL
-        if action is Action.EQUIP:
-            return self.EQUIP
-        if action is Action.CONFIRM_SELL:
-            return self.CONFIRM_SELL
-        raise ValueError(f"No touch target for {action.value}")
+        return LOOT_UI.target(action)
 
 
 class HumanGestureGenerator:
@@ -68,6 +45,8 @@ class HumanGestureGenerator:
 
 
 class RandomizedAdbTouchController:
+    """Desktop touch adapter implemented with ADB."""
+
     def __init__(self, device: AdbDevice, layout: LootButtonLayout | None = None, gestures: HumanGestureGenerator | None = None) -> None:
         self.device = device
         self.layout = layout or LootButtonLayout()

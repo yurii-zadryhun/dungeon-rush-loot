@@ -4,7 +4,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, Protocol
 
 from .config import MAX_ITEM_LEVEL, MAX_STATS, MIN_STATS, RARITY_TIERS, SKILLS
 from .domain import EquipmentSlot, ParsedItem, ParsedStat
@@ -56,13 +56,13 @@ class EquipmentLoadout:
         matches = [slot for slot, equipped in self._items.items() if item_identity(equipped) == identity]
         if not matches:
             raise EquipmentStateError(
-                "The OCR-equipped item is not present in equipment.json. "
+                "The OCR-equipped item is not present in configured equipment. "
                 "Update the initial equipment state before running the watcher."
             )
         if len(matches) > 1:
             raise EquipmentStateError(
                 "The OCR-equipped item matches more than one configured slot; "
-                "make the manual equipment state unambiguous."
+                "make the equipment state unambiguous."
             )
         return matches[0]
 
@@ -76,43 +76,52 @@ class EquipmentLoadout:
         return self.with_replacement(slot, stripped)
 
 
-class JsonEquipmentRepository:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self._loadout = self._load(path)
+class EquipmentRepository(Protocol):
+    def snapshot(self) -> EquipmentLoadout: ...
 
-    def snapshot(self) -> EquipmentLoadout:
-        return self._loadout
+    def replace(self, slot: EquipmentSlot, item: ParsedItem) -> None: ...
 
-    def replace(self, slot: EquipmentSlot, item: ParsedItem) -> None:
-        updated = self._loadout.with_replacement(slot, item)
-        self._persist(updated)
-        self._loadout = updated
+
+class EquipmentCodec:
+    @staticmethod
+    def loads_json(raw: str) -> EquipmentLoadout:
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise EquipmentStateError(f"Invalid equipment JSON: {exc}") from exc
+        return EquipmentCodec.from_payload(payload)
 
     @staticmethod
-    def _load(path: Path) -> EquipmentLoadout:
-        if not path.exists():
-            raise EquipmentStateError(
-                f"Equipment state file does not exist: {path}. "
-                "Copy equipment.example.json, fill the six current items, and retry."
-            )
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise EquipmentStateError(f"Could not read equipment state from {path}: {exc}") from exc
+    def dumps_json(loadout: EquipmentLoadout, *, indent: int | None = None) -> str:
+        return json.dumps(
+            EquipmentCodec.to_payload(loadout),
+            ensure_ascii=False,
+            indent=indent,
+            separators=None if indent is not None else (",", ":"),
+        )
+
+    @staticmethod
+    def from_payload(payload) -> EquipmentLoadout:
         if not isinstance(payload, dict):
-            raise EquipmentStateError("equipment.json must contain a JSON object keyed by equipment slot.")
+            raise EquipmentStateError("Equipment state must be a JSON object keyed by equipment slot.")
         items: dict[EquipmentSlot, ParsedItem] = {}
         for raw_slot, raw_item in payload.items():
             try:
                 slot = EquipmentSlot(raw_slot)
             except ValueError as exc:
                 raise EquipmentStateError(f"Unknown equipment slot: {raw_slot!r}") from exc
-            items[slot] = JsonEquipmentRepository._parse_item(slot, raw_item)
+            items[slot] = EquipmentCodec.parse_item(slot, raw_item)
         return EquipmentLoadout(items)
 
     @staticmethod
-    def _parse_item(slot: EquipmentSlot, raw_item) -> ParsedItem:
+    def to_payload(loadout: EquipmentLoadout) -> dict:
+        return {
+            slot.value: EquipmentCodec.serialize_item(item)
+            for slot, item in sorted(loadout.items.items(), key=lambda pair: pair[0].value)
+        }
+
+    @staticmethod
+    def parse_item(slot: EquipmentSlot, raw_item) -> ParsedItem:
         if not isinstance(raw_item, dict):
             raise EquipmentStateError(f"Slot {slot.value!r} must contain a JSON object.")
         rarity = str(raw_item.get("rarity", "")).strip().lower()
@@ -133,7 +142,7 @@ class JsonEquipmentRepository:
             raise EquipmentStateError(
                 f"Slot {slot.value!r} requires {MIN_STATS}-{MAX_STATS} stats; got {len(raw_stats)}."
             )
-        stats = tuple(JsonEquipmentRepository._parse_stat(slot, name, value) for name, value in raw_stats.items())
+        stats = tuple(EquipmentCodec.parse_stat(slot, name, value) for name, value in raw_stats.items())
         return ParsedItem(
             title=str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}"),
             rarity=rarity.title(),
@@ -146,7 +155,7 @@ class JsonEquipmentRepository:
         )
 
     @staticmethod
-    def _parse_stat(slot: EquipmentSlot, raw_name: str, raw_value) -> ParsedStat:
+    def parse_stat(slot: EquipmentSlot, raw_name: str, raw_value) -> ParsedStat:
         name = canonical_name(str(raw_name))
         if name not in SKILLS:
             raise EquipmentStateError(f"Slot {slot.value!r} has unknown stat: {raw_name!r}")
@@ -158,21 +167,56 @@ class JsonEquipmentRepository:
             ) from exc
         return ParsedStat(name, value, f"{value:+.2f}% {name}", 1.0)
 
-    def _persist(self, loadout: EquipmentLoadout) -> None:
-        payload = {
-            slot.value: self._serialize_item(item)
-            for slot, item in sorted(loadout.items.items(), key=lambda pair: pair[0].value)
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        temporary.replace(self.path)
-
     @staticmethod
-    def _serialize_item(item: ParsedItem) -> dict:
+    def serialize_item(item: ParsedItem) -> dict:
         return {
             "title": item.title,
             "rarity": item.rarity,
             "level": item.level,
             "stats": {canonical_name(stat.name): stat.value for stat in item.stats},
         }
+
+
+class InMemoryEquipmentRepository:
+    def __init__(self, loadout: EquipmentLoadout) -> None:
+        self._loadout = loadout
+
+    def snapshot(self) -> EquipmentLoadout:
+        return self._loadout
+
+    def replace(self, slot: EquipmentSlot, item: ParsedItem) -> None:
+        self._loadout = self._loadout.with_replacement(slot, item)
+
+
+class JsonEquipmentRepository:
+    """Desktop file adapter. The build/scoring domain depends only on EquipmentRepository."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._loadout = self._load(path)
+
+    def snapshot(self) -> EquipmentLoadout:
+        return self._loadout
+
+    def replace(self, slot: EquipmentSlot, item: ParsedItem) -> None:
+        updated = self._loadout.with_replacement(slot, item)
+        self._persist(updated)
+        self._loadout = updated
+
+    @staticmethod
+    def _load(path: Path) -> EquipmentLoadout:
+        if not path.exists():
+            raise EquipmentStateError(
+                f"Equipment state file does not exist: {path}. "
+                "Copy equipment.example.json, fill the six current items, and retry."
+            )
+        try:
+            return EquipmentCodec.loads_json(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise EquipmentStateError(f"Could not read equipment state from {path}: {exc}") from exc
+
+    def _persist(self, loadout: EquipmentLoadout) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(EquipmentCodec.dumps_json(loadout, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(self.path)

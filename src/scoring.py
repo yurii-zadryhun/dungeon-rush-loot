@@ -26,7 +26,7 @@ from .domain import (
     ParsedItem,
     ScoreComponent,
 )
-from .equipment import EquipmentLoadout, EquipmentStateError, JsonEquipmentRepository, beneficial_value
+from .equipment import EquipmentLoadout, EquipmentRepository, EquipmentStateError, beneficial_value
 from .strategies import BuildScoringStrategy
 from .text import canonical_name
 
@@ -155,7 +155,7 @@ class BuildScorer:
 class ItemComparer:
     def __init__(
         self,
-        equipment: JsonEquipmentRepository | None = None,
+        equipment: EquipmentRepository | None = None,
         scorer: BuildScorer | None = None,
         allow_partial: bool = False,
     ) -> None:
