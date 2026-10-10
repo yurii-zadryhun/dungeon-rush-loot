@@ -99,6 +99,110 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(updated["helmet"]["level"], 120)
         self.assertEqual(updated["helmet"]["stats"]["triple hit chance"], 25)
 
+    def test_real_loot_screen_with_separate_rarity_headings(self):
+        # Actual in-game structure: rarity is ABOVE the [EXP] name, not on it.
+        # "Infernal Cape" is a HELMET according to the Unity game catalog.
+        texts = [
+            "Equipped",
+            "Divine",
+            "[EXP] Celestial Helmet",
+            "Health 3.28M",
+            "Lvl 87",
+            "+18.92% Lifesteal",
+            "+1.98% Ranged Damage",
+            "+10.82% Critical Chance",
+            "+67.63% Melee Defense",
+            "+6.54% Mega Crit Chance",
+            "Immortal",
+            "[EXP] Infernal Cape",
+            "Health 531.00K",
+            "Lvl 12",
+            "+81.21% Critical Damage",
+            "+5.02% Critical Chance",
+            "+3.79% Health",
+            "+4.05% Knockback",
+            "Sell", "Equip",
+        ]
+        spans = [_span(text, index * 38, index * 38 + 30) for index, text in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "ok", result["message"])
+        self.assertEqual(result["slot"], "helmet")
+        self.assertEqual(result["equipped"]["rarity"], "Divine")
+        self.assertEqual(result["candidate"]["rarity"], "Immortal")
+        self.assertEqual(result["equipped"]["level"], 87)
+        self.assertEqual(result["candidate"]["level"], 12)
+        self.assertEqual(len(result["equipped"]["stats"]), 5)
+        self.assertEqual(len(result["candidate"]["stats"]), 4)
+        self.assertEqual(result["action"], "sell")
+
+    def test_missing_rarity_header_fails_closed(self):
+        texts = [
+            "[EXP] Celestial Helmet",
+            "Lvl 87", "+18.92% Lifesteal", "+1.98% Ranged Damage",
+            "+10.82% Critical Chance", "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+            "Immortal", "[EXP] Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+5.02% Critical Chance",
+            "+3.79% Health", "+4.05% Knockback",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertEqual(result["action"], "check")
+
+    def test_different_candidate_slot_must_not_be_tapped(self):
+        texts = [
+            "Divine", "[EXP] Celestial Helmet", "Lvl 87",
+            "+18.92% Lifesteal", "+1.98% Ranged Damage", "+10.82% Critical Chance",
+            "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+            "Immortal", "[EXP] Void Ring", "Lvl 16",
+            "+3.64% Health Regen", "-5.72% Companion Cooldown",
+            "+8.74% Critical Chance", "+23.09% Triple Hit Chance", "+9.07% Mega Crit Chance",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertIn("slot", result["message"].lower())
+
+    def test_incomplete_affixes_never_trigger_sell(self):
+        texts = [
+            "Divine", "[EXP] Celestial Helmet", "Lvl 87",
+            "+18.92% Lifesteal", "+1.98% Ranged Damage", "+10.82% Critical Chance",
+            "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+            "Immortal", "[EXP] Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+5.02% Critical Chance", "+3.79% Health",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertEqual(result["action"], "check")
+
+    def test_impossible_roll_never_triggers_sell(self):
+        texts = [
+            "Divine", "[EXP] Celestial Helmet", "Lvl 87",
+            "+18.92% Lifesteal", "+1.98% Ranged Damage", "+10.82% Critical Chance",
+            "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+            "Immortal", "[EXP] Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+50.02% Critical Chance",
+            "+3.79% Health", "+4.05% Knockback",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertIn("out-of-range", result["message"].lower())
+
+    def test_missing_title_fails_closed_without_percentage_gap_guess(self):
+        texts = [
+            "Divine", "+18.92% Lifesteal", "+1.98% Ranged Damage",
+            "+10.82% Critical Chance", "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+            "Immortal", "[EXP] Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+5.02% Critical Chance",
+            "+3.79% Health", "+4.05% Knockback",
+        ]
+        spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
+        result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertEqual(result["action"], "check")
+
     def test_mlkit_style_spans_flow_through_shared_parser_and_scorer(self):
         spans = [
             _span("Divine [EXP] Celestial Helmet", 0, 40),
