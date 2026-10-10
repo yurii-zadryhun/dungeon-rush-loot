@@ -54,8 +54,7 @@ LOOT_UI = LootUiProfile(
 EQUIPMENT_IMPORT_CROP = RelativeRect(0.075, 0.425, 0.925, 0.705)
 
 
-# The item level is rendered inside/under the icon with a heavy outline and is
-# the least reliable text for ML Kit. A second, aggressively upscaled OCR pass
-# is limited to this static level area. Because the crop is so tight, the shared
-# parser can safely recover a lone number even if ML Kit misses the "Lvl" glyphs.
-EQUIPMENT_IMPORT_LEVEL_CROP = RelativeRect(0.10, 0.485, 0.34, 0.595)
+# ML Kit missed even a clearly visible "Lvl 87" in the old broad icon crop.
+# Restrict the level passes to the icon footer itself, excluding the detailed
+# artwork above it. Calibrated against the eight 1080x2340 source screenshots.
+EQUIPMENT_IMPORT_LEVEL_CROP = RelativeRect(0.135, 0.545, 0.325, 0.585)
