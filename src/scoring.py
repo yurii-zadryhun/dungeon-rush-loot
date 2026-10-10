@@ -219,15 +219,15 @@ class ItemComparer:
                 return f"Could not parse valid {label} rarity/level."
             if not item.title:
                 return f"Missing {label} item title."
+            # Report visible-but-unparsed OCR lines before the count check;
+            # e.g. an impossible 50% Crit Chance should not be silently lost.
+            missing = unparsed_affix_lines(item.raw_lines, item.stats)
+            if missing:
+                return f"Unparsed {label} affix lines: {missing[:3]}."
             if not self.allow_partial:
                 problem = validate_affixes(item.title, item.stats, rarity=item.rarity)
                 if problem:
                     return f"{label}: {problem}"
-            # At small rarity/affix counts, loss of just one row must not
-            # turn an incomplete OCR card into a plausible 2-affix candidate.
-            missing = unparsed_affix_lines(item.raw_lines, item.stats)
-            if missing:
-                return f"Unparsed {label} affix lines: {missing[:3]}."
         return None
 
     @staticmethod
