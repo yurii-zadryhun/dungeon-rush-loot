@@ -157,7 +157,7 @@ private fun AutoScreen(
                     graph.preferences.setEnabled(true)
                 }
             },
-            enabled = serviceConnected && validation.valid,
+            enabled = enabled || (serviceConnected && validation.valid),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (enabled) "STOP AUTO" else "START AUTO")
