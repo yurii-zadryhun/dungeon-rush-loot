@@ -12,10 +12,10 @@ object ImageChangeDetector {
         region: RelativeRect,
         threshold: Double = 0.010,
     ): Boolean {
-        if (before.width != after.width || before.height != after.height) return true
+        if (before.width != after.width || before.height != after.height) return false
         val beforeSignature = signature(before, region)
         val afterSignature = signature(after, region)
-        if (beforeSignature.size != afterSignature.size || beforeSignature.isEmpty()) return true
+        if (beforeSignature.size != afterSignature.size || beforeSignature.isEmpty()) return false
         val difference = beforeSignature.indices.sumOf {
             abs(beforeSignature[it] - afterSignature[it]).toDouble()
         } / (255.0 * beforeSignature.size)
