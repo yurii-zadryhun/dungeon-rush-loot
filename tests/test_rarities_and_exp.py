@@ -134,7 +134,10 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
                         }))
                         result = json.loads(check)
                         self.assertFalse(result["valid"])
-                        self.assertIn("normal affixes", result["error"])
+                        if actual == 0 and exp == 0:
+                            self.assertIn("between 1 and 5", result["error"])
+                        else:
+                            self.assertIn("normal affixes", result["error"])
 
     def test_exceptional_count_zero_one_two_three_and_marker(self):
         for rarity, normal_count in RARITY_NORMAL_AFFIX_COUNT.items():
