@@ -19,6 +19,12 @@ STAT_NUMBER_RE = re.compile(
     re.I,
 )
 LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
+# Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
+# A bullet is recovered as a positive separator ONLY when an explicit level
+# marker occurs on the same row, followed by an intact decimal stat value.
+LEVEL_ROW_BULLET_SIGN_RE = re.compile(
+    r"^[•·]\s*(?=\d{1,3}[.,]\d{1,2}(?:\s|%|$))"
+)
 NEGATIVE_ONLY_SKILLS = frozenset({"critical damage taken", "companion cooldown"})
 
 
@@ -218,7 +224,12 @@ class LootItemParser:
     ) -> tuple[ParsedStat | None, int]:
         line = lines[index]
         # Numbers can appear after "Lvl 87" on the same physical OCR line.
-        clean = self._strip_level_marker(normalize_text(line.text))
+        observed = normalize_text(line.text)
+        clean = self._strip_level_marker(observed)
+        if LEVEL_MARKER_RE.search(observed):
+            # Do not guess numbers: preserve the intact two-decimal value.
+            # The known positive-only skill and cap are checked below.
+            clean = LEVEL_ROW_BULLET_SIGN_RE.sub("+", clean, count=1)
         match = STAT_NUMBER_RE.search(clean)
         if match is None:
             return None, 1
