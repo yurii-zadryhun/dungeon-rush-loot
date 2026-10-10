@@ -189,23 +189,10 @@ data class DecisionEvent(
                 slot = json.optString("slot").takeIf { it.isNotBlank() && it != "null" },
                 message = json.optString("message"),
                 candidateJson = candidate?.toString(),
-                candidateKey = candidate?.let {
-                    // Compare complete item identity across the two fresh
-                    // screenshots, not just rarity/level/stats of the candidate.
-                    // This catches title/slot/equipped-item changes as well.
-                    val equipped = json.optJSONObject("equipped")
-                    listOf(
-                        json.optString("slot"),
-                        it.optString("title"),
-                        it.optString("rarity"),
-                        it.optInt("level", -1).toString(),
-                        it.optJSONArray("stats")?.toString().orEmpty(),
-                        equipped?.optString("title").orEmpty(),
-                        equipped?.optString("rarity").orEmpty(),
-                        equipped?.optInt("level", -1).toString(),
-                        equipped?.optJSONArray("stats")?.toString().orEmpty(),
-                    ).joinToString("|")
-                },
+                // Backend key is canonical and excludes OCR raw_text/confidence.
+                // A missing key on an otherwise OK event must fail closed.
+                candidateKey = json.optString("verification_key")
+                    .takeIf { !json.isNull("verification_key") && it.isNotBlank() && it != "null" },
                 equippedScore = json.optJSONObject("equipped_score")?.optDouble("total"),
                 candidateScore = json.optJSONObject("candidate_score")?.optDouble("total"),
                 touchTarget = json.optJSONObject("touch_target")?.let(RelativeRect::fromJson),
