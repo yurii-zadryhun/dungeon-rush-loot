@@ -6,6 +6,8 @@ import com.yurii.dungeonrushloot.data.ApplicationLogStore
 import com.yurii.dungeonrushloot.data.AutomationPreferences
 import com.yurii.dungeonrushloot.data.DecisionLogStore
 import com.yurii.dungeonrushloot.data.EquipmentStore
+import com.yurii.dungeonrushloot.data.OcrDebugExporter
+import com.yurii.dungeonrushloot.runtime.OcrDebugCapture
 
 class AppGraph private constructor(context: Context) {
     private val appContext = context.applicationContext
@@ -15,6 +17,8 @@ class AppGraph private constructor(context: Context) {
     val preferences: AutomationPreferences by lazy { AutomationPreferences(appContext) }
     val equipment: EquipmentStore by lazy { EquipmentStore(appContext) }
     val logs: DecisionLogStore by lazy { DecisionLogStore(appContext) }
+    val ocrDebugCapture = OcrDebugCapture()
+    val ocrDebugExporter = OcrDebugExporter(appContext)
 
     companion object {
         @Volatile
