@@ -15,7 +15,7 @@ Create your local state once:
 cp equipment.example.json equipment.json
 ```
 
-Fill all eight build slots: weapon, helmet, backpack, gloves, necklace, ring, wings, cape. Normal loot items use 4-5 affixes; wings also contribute their displayed absolute Damage/Health primaries, while cape Damage/Health are intrinsic primary percentages rather than rolled affixes. `title` is only descriptive; runtime matching uses tier + level + normalized affixes, which is less sensitive to OCR spelling differences in item names.
+Fill all eight build slots: weapon, helmet, backpack, gloves, necklace, ring, wings, cape. **Each item accepts 2–5 rolled affixes**, including low-rarity equipment and Wings/Cape. Wings contribute their absolute Damage/Health primaries; Cape Damage/Health are intrinsic primary percentages, separate from rolled affixes. All 11 game rarities (Common–Ultimate) are supported. The **[EXP]** title marker is meaningful: marked items require at least one exceptional skill; unmarked items must have only ordinary affixes. Runtime matching uses tier, level, EXP marker, and normalized affixes; if multiple slots share the same numeric identity, the recognized title is checked against the APK item-name catalog to disambiguate safely. Previous app imports stripped [EXP] from names: re-import the current screenshots after upgrading.
 
 `equipment.json` is intentionally gitignored. In `auto` mode, a visually confirmed Equip replaces that slot in memory **and atomically persists the new item back to the same file**. Every later drop is therefore scored against the updated build.
 
