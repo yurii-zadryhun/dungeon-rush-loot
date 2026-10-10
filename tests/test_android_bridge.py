@@ -276,6 +276,164 @@ class AndroidBridgeTest(unittest.TestCase):
                 self.assertEqual(noisy["status"], "check_ocr")
                 self.assertEqual(noisy["action"], "check")
 
+    def test_actual_session_gloves_hud_level_and_x4_noise(self):
+        # Device JSONL 2026-10-10 19:48:32/19:48:57. The game HUD level at
+        # far right is NOT the equipped item level. "Lv0124" is ML Kit for
+        # "Lvl 124"; Bx4/BSX4 is an unrelated reward badge.
+        equipment = _equipment()
+        equipment["gloves"] = {
+            "title": "Immortal [EXP] Crimson Gloves", "rarity": "Immortal",
+            "level": 124,
+            "stats": {
+                "lifesteal": 4.50, "ranged damage": 7.32,
+                "melee damage": 19.30, "critical damage taken": -51.74,
+                "triple hit chance": 24.12,
+            },
+        }
+        for level_text, badge in (
+            ("LvI 124", "Bx4"),
+            ("Lv0124", "BSX4"),
+        ):
+            with self.subTest(level_text=level_text, badge=badge):
+                rows = [
+                    ("Equipped", 220, 355),
+                    ("Immortal EXP] Crimson Gloves", 300, 755),
+                    ("Damage 171.60K", 425, 660),
+                    ("+4.50% Lifesteal", 425, 640),
+                    (f"{level_text} +7.32% Ranged Damage", 275, 742),
+                    ("Lvl 123", 870, 934),  # background/HUD at far right
+                    ("+19.30% Melee Damage", 425, 735),
+                    ("-51.74% Critical Damage", 425, 752),
+                    ("Taken", 425, 500),
+                    ("+24.12% Triple Hit Chance", 425, 773),
+                    ("Ancient EXP] Winter Gloves", 285, 739),
+                    ("Damage 33.49K", 425, 652),
+                    ("+4.38% Critical Chance", 425, 734),
+                    (f"Lvi 51 +8.54% Attack Speed {badge}", 298, 900),
+                    ("+56.83% Ranged Defense", 425, 764),
+                ]
+                spans = [
+                    {
+                        "text": text, "score": 0.86,
+                        "box": {
+                            "left": left, "top": i * 38,
+                            "right": right, "bottom": i * 38 + 27,
+                        },
+                    }
+                    for i, (text, left, right) in enumerate(rows)
+                ]
+                event = json.loads(evaluate_spans_json(
+                    json.dumps(spans), json.dumps(equipment), "pvp",
+                ))
+                self.assertEqual(event["status"], "ok", event["message"])
+                self.assertEqual(event["slot"], "gloves")
+                self.assertEqual(event["equipped"]["level"], 124)
+                self.assertEqual(event["candidate"]["level"], 51)
+                self.assertIn(
+                    {"name": "attack speed", "value": 8.54},
+                    [{"name": s["name"], "value": s["value"]}
+                     for s in event["candidate"]["stats"]],
+                )
+                self.assertTrue(event["verification_key"])
+
+    def test_actual_session_wrapped_taken_is_not_a_title_prefix(self):
+        equipment = _equipment()
+        equipment["necklace"] = {
+            "title": "Immortal [EXP] Dread Necklace", "rarity": "Immortal",
+            "level": 12,
+            "stats": {
+                "lifesteal": 11.32, "companion cooldown": -3.66,
+                "critical damage": 46.04, "triple hit chance": 24.44,
+                "critical damage taken": -44.78,
+            },
+        }
+        rows = [
+            "quipped", "Immortal EXP] Dread Necklace", "Health 236.00K",
+            "+11.32l Lifesteal", "Lv 12 -3.66% Companion Cooldown",
+            "+46.04% Critical Damage", "+24.44% Triple Hit Chance",
+            "-44.78% Critical Damage", "Taken",
+            "Immortal [EXP] Scarlet Necklace", "Health 257.00K",
+            "+65.17% Critical Damage", "LvI 19 +1.78% Ranged Damage",
+            "+7.21% Critical Chance", "+7.19% Knockback",
+        ]
+        event = json.loads(evaluate_spans_json(
+            json.dumps([_span(t, i * 38, i * 38 + 27)
+                        for i, t in enumerate(rows)]),
+            json.dumps(equipment), "pvp",
+        ))
+        self.assertEqual(event["status"], "ok", event["message"])
+        self.assertEqual(event["slot"], "necklace")
+        self.assertEqual(event["equipped"]["level"], 12)
+        self.assertEqual(event["candidate"]["level"], 19)
+        self.assertEqual(
+            [s["value"] for s in event["equipped"]["stats"]
+             if s["name"] == "critical damage taken"], [-44.78],
+        )
+        self.assertTrue(event["verification_key"])
+
+    def test_actual_session_backpack_level_marker_lvu(self):
+        equipment = _equipment()
+        equipment["backpack"] = {
+            "title": "Immortal [EXP] Crimson Backpack", "rarity": "Immortal",
+            "level": 106,
+            "stats": {
+                "critical chance": 8.04, "critical damage": 78.01,
+                "attack speed": 9.11, "ranged defense": 54.09,
+                "critical damage taken": -39.40,
+            },
+        }
+        rows = [
+            "quipped", "Immortal [EXP] Crimson Backpack",
+            "Health 777.00K", "+8.04% Critical Chance",
+            "Lvl 106 +78.01% Critical Damage", "+9.11% Attack Speed",
+            "+54.09% Ranged Defense", "-39.40% Critical Damage",
+            "Taken", "Immortal [EXP] Infernal Tome",
+            "Health 777.00K", "+3.40% Critical Chance",
+            "(LvU 106) -5.26% Companion Cooldown",
+            "+15.54% Lifesteal", "8.56% Ranged Defense",
+        ]
+        event = json.loads(evaluate_spans_json(
+            json.dumps([_span(t, i * 38, i * 38 + 27)
+                        for i, t in enumerate(rows)]),
+            json.dumps(equipment), "pvp",
+        ))
+        self.assertEqual(event["status"], "ok", event["message"])
+        self.assertEqual(event["slot"], "backpack")
+        self.assertEqual(event["equipped"]["level"], 106)
+        self.assertEqual(event["candidate"]["level"], 106)
+        self.assertEqual(
+            [s["value"] for s in event["equipped"]["stats"]
+             if s["name"] == "critical damage taken"], [-39.40],
+        )
+
+    def test_off_card_level_filter_does_not_hide_real_in_card_conflicts(self):
+        equipment = _equipment()
+        equipment["gloves"] = {
+            "title": "Immortal [EXP] Crimson Gloves", "rarity": "Immortal",
+            "level": 124,
+            "stats": {
+                "lifesteal": 4.50, "ranged damage": 7.32,
+                "melee damage": 19.30, "critical damage taken": -51.74,
+                "triple hit chance": 24.12,
+            },
+        }
+        rows = [
+            "Immortal [EXP] Crimson Gloves",
+            "Lvl 124 +4.50% Lifesteal", "Lvl 123 +7.32% Ranged Damage",
+            "+19.30% Melee Damage", "-51.74% Critical Damage",
+            "Taken", "+24.12% Triple Hit Chance",
+            "Ancient [EXP] Winter Gloves", "Lvl 51",
+            "+4.38% Critical Chance", "+8.54% Attack Speed",
+            "+56.83% Ranged Defense",
+        ]
+        result = json.loads(evaluate_spans_json(
+            json.dumps([_span(t, i * 38, i * 38 + 27)
+                        for i, t in enumerate(rows)]),
+            json.dumps(equipment), "pvp",
+        ))
+        self.assertEqual(result["status"], "check_ocr")
+        self.assertEqual(result["action"], "check")
+
     def test_different_candidate_slot_must_not_be_tapped(self):
         texts = [
             "Divine", "[EXP] Celestial Helmet", "Lvl 87",
