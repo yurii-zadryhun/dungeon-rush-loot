@@ -24,6 +24,7 @@ class OcrDebugExporter(private val context: Context) {
         snapshot: OcrDebugSnapshot,
         relativeCrop: RelativeRect,
         decision: DecisionEvent?,
+        evaluationError: String? = null,
     ): String {
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
@@ -54,6 +55,7 @@ class OcrDebugExporter(private val context: Context) {
                 snapshot.spans.forEach { put(it.toJson()) }
             })
             .put("parser_decision", decision?.let { JSONObject(it.rawJson) } ?: JSONObject.NULL)
+            .put("parser_error", evaluationError ?: JSONObject.NULL)
 
         return DownloadsLogExporter(context).saveZip(name) { output ->
             OcrDebugZip.write(
