@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -22,6 +23,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -30,6 +32,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -67,7 +70,11 @@ fun DungeonRushLootApp(graph: AppGraph) {
             },
         ) { padding ->
             when (tab) {
-                0 -> AutoScreen(graph, Modifier.padding(padding))
+                0 -> AutoScreen(
+                    graph = graph,
+                    onOpenEquipment = { tab = 1 },
+                    modifier = Modifier.padding(padding),
+                )
                 1 -> EquipmentScreen(graph, Modifier.padding(padding))
                 else -> LogsScreen(graph, Modifier.padding(padding))
             }
@@ -76,7 +83,11 @@ fun DungeonRushLootApp(graph: AppGraph) {
 }
 
 @Composable
-private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
+private fun AutoScreen(
+    graph: AppGraph,
+    onOpenEquipment: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val enabled by graph.preferences.enabled.collectAsState()
     val strategy by graph.preferences.strategy.collectAsState()
@@ -108,12 +119,21 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
             ok = serviceConnected,
             good = "Connected",
             bad = "Not connected",
+            actionLabel = "Settings",
+            onAction = {
+                context.startActivity(
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            },
         )
         StatusCard(
             title = "Equipment",
             ok = validation.valid,
             good = "8/8 ready",
             bad = validation.error ?: "Incomplete",
+            actionLabel = "Open",
+            onAction = onOpenEquipment,
         )
 
         Text("Strategy", style = MaterialTheme.typography.titleMedium)
@@ -125,20 +145,6 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
                     enabled = !enabled,
                     label = { Text(value.uppercase()) },
                 )
-            }
-        }
-
-        if (!serviceConnected) {
-            Button(
-                onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Open Accessibility settings")
             }
         }
 
@@ -186,6 +192,8 @@ private fun StatusCard(
     ok: Boolean,
     good: String,
     bad: String,
+    actionLabel: String,
+    onAction: () -> Unit,
 ) {
     Card(
         colors = CardDefaults.cardColors(
@@ -197,9 +205,18 @@ private fun StatusCard(
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text(if (ok) good else bad)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(if (ok) good else bad)
+            }
+            TextButton(onClick = onAction) {
+                Text(actionLabel)
+            }
         }
     }
 }
