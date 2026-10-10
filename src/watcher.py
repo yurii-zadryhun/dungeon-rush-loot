@@ -27,6 +27,7 @@ class LootWatcher:
         retry_interval: float,
         visual_signature_ttl: float = DEFAULT_VISUAL_SIGNATURE_TTL,
         candidate_hash_ttl: float = DEFAULT_CANDIDATE_HASH_TTL,
+        decision_log=None,
     ) -> None:
         self.device = device
         self.analyzer = analyzer
@@ -39,6 +40,7 @@ class LootWatcher:
         self.retry_interval = retry_interval
         self.visual_signature_ttl = visual_signature_ttl
         self.candidate_hash_ttl = candidate_hash_ttl
+        self.decision_log = decision_log
         self.state = WatchState()
 
     def run(self) -> int:
@@ -86,6 +88,8 @@ class LootWatcher:
             return
         self.presenter.result(comparison)
         self.artifacts.save(image, artifacts, self.scale)
+        if self.decision_log is not None:
+            self.decision_log.append(comparison, source="desktop", ocr_lines=artifacts.popup_lines)
         outcome = self.mode.handle(DecisionContext(image, artifacts, candidate_hash))
         if outcome.message and self.presenter.verbose:
             self.presenter.warning(outcome.message)
@@ -124,6 +128,8 @@ class LootWatcher:
         now = time.monotonic()
         if key != self.state.last_error_key or now - self.state.last_error_at >= 10.0:
             self.presenter.result(comparison)
+            if self.decision_log is not None:
+                self.decision_log.append(comparison, source="desktop")
             self.mode.handle_check(comparison)
             self.state.last_error_key, self.state.last_error_at = key, now
 

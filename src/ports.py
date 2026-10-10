@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, Sequence, runtime_checkable
-
-from PIL import Image
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 from .domain import Action, Comparison, EquipmentSlot, OcrSpan, ParsedItem
 from .equipment import EquipmentLoadout
@@ -10,7 +8,7 @@ from .equipment import EquipmentLoadout
 
 @runtime_checkable
 class ScreenCapturePort(Protocol):
-    def screenshot(self) -> Image.Image: ...
+    def screenshot(self) -> Any: ...
 
 
 @runtime_checkable
@@ -20,7 +18,7 @@ class ForegroundPort(Protocol):
 
 @runtime_checkable
 class OcrPort(Protocol):
-    def recognize(self, image: Image.Image) -> Sequence[OcrSpan]: ...
+    def recognize(self, image: Any) -> Sequence[OcrSpan]: ...
 
 
 @runtime_checkable
