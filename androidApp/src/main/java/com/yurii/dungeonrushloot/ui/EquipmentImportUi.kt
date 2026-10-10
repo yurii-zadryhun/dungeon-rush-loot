@@ -64,6 +64,7 @@ fun EquipmentImportPanel(graph: AppGraph) {
                     EquipmentScreenshotImporter(
                         context.applicationContext,
                         graph.bridge,
+                        graph.appLog,
                         graph.bridge.config.equipmentImportCrop,
                         graph.bridge.config.equipmentImportLevelCrop,
                     ).import(uris)
