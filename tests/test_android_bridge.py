@@ -135,6 +135,45 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(len(result["candidate"]["stats"]), 4)
         self.assertEqual(result["action"], "sell")
 
+    def test_standalone_range_marker_is_not_an_item_title(self):
+        from src.domain import Box, OcrLine
+        from src.parsing import LootCardSplitter, LootItemParser
+
+        texts = [
+            "Divine", "[EXP] Eternal Crossbow", "[Range]",
+            "Damage 709.35K", "Lvl 30",
+            "+87.06% Critical Damage", "+8.21% Health",
+            "-4.98% Companion Cooldown", "+9.40% Mega Crit Chance",
+            "Immortal", "[EXP] Infernal Cape", "Lvl 12",
+            "+81.21% Critical Damage", "+5.02% Critical Chance",
+            "+3.79% Health", "+4.05% Knockback",
+        ]
+        lines = [
+            OcrLine(text, 0.99, Box(0, i * 35, 600, i * 35 + 30))
+            for i, text in enumerate(texts)
+        ]
+        equipped_lines, candidate_lines = LootCardSplitter().split(lines)
+        equipped = LootItemParser().parse(equipped_lines)
+        self.assertEqual(equipped.rarity, "Divine")
+        self.assertEqual(equipped.level, 30)
+        self.assertEqual(len(equipped.stats), 4)
+        self.assertEqual(len(candidate_lines), 7)
+
+    def test_standalone_melee_marker_is_respected(self):
+        from src.domain import Box, OcrLine
+        from src.parsing import LootItemParser
+
+        texts = [
+            "Immortal [EXP] Infernal Greatsword",
+            "[Melee]", "Lvl 12", "+81.21% Critical Damage",
+            "+5.02% Critical Chance", "+3.79% Health", "+4.05% Knockback",
+        ]
+        lines = [
+            OcrLine(text, 0.99, Box(0, i * 35, 600, i * 35 + 30))
+            for i, text in enumerate(texts)
+        ]
+        self.assertTrue(LootItemParser().parse(lines).melee)
+
     def test_missing_rarity_header_fails_closed(self):
         texts = [
             "[EXP] Celestial Helmet",
