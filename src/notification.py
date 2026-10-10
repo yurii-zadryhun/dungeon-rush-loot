@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import shlex
 import subprocess
-import time
 from pathlib import Path
 
 from .domain import Comparison
@@ -35,7 +34,7 @@ class PhoneNotifier:
         self.timeout_seconds = timeout_seconds
 
     def send(self, comparison: Comparison) -> None:
-        summary = ComparisonFormatter.summary(comparison, verbose=False)
+        summary = str(ComparisonFormatter.summary(comparison, verbose=False))
         commands = self._commands(comparison, summary)
         if commands:
             self._ssh(" && ".join(commands))
@@ -44,12 +43,22 @@ class PhoneNotifier:
         color, icon = self._style(comparison)
         commands: list[str] = []
         if self.toast:
-            commands.append(f"termux-toast -s -g top -b {shlex.quote(color)} -c white {shlex.quote(summary)}")
+            commands.append(
+                f"termux-toast -s -g top -b {shlex.quote(color)} -c white {shlex.quote(summary)}"
+            )
         if self.push:
-            commands.append(" ".join([
-                "termux-notification", "--id dungeon-rush-compare", "--title 'Dungeon Rush'",
-                f"--content {shlex.quote(summary)}", "--priority high", f"--icon {shlex.quote(icon)}",
-            ]))
+            commands.append(
+                " ".join(
+                    [
+                        "termux-notification",
+                        "--id dungeon-rush-compare",
+                        "--title 'Dungeon Rush'",
+                        f"--content {shlex.quote(summary)}",
+                        "--priority high",
+                        f"--icon {shlex.quote(icon)}",
+                    ]
+                )
+            )
         return commands
 
     @staticmethod
@@ -61,7 +70,15 @@ class PhoneNotifier:
         return PhoneNotifier.SELL_COLOR, "delete"
 
     def _ssh(self, remote_command: str) -> None:
-        command = ["ssh", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", f"ConnectTimeout={max(1, math.ceil(self.timeout_seconds))}"]
+        command = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "IdentitiesOnly=yes",
+            "-o",
+            f"ConnectTimeout={max(1, math.ceil(self.timeout_seconds))}",
+        ]
         if self.trust_transport:
             command += ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
         if self.ssh_port is not None:
@@ -70,6 +87,12 @@ class PhoneNotifier:
             command += ["-i", str(self.identity_file)]
         command += [self.ssh_target, remote_command]
         try:
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=self.timeout_seconds + 1, check=False)
+            subprocess.run(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=self.timeout_seconds + 1,
+                check=False,
+            )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return
