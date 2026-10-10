@@ -6,6 +6,9 @@ on:
     paths:
       - "androidApp/**"
       - "src/**"
+      # Tests are part of the release gate; a test-only commit must not leave
+      # the rolling APK pointing at a prior source revision.
+      - "tests/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
