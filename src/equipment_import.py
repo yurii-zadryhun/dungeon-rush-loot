@@ -167,7 +167,7 @@ class EquipmentScreenshotParser:
             title = "[EXP] " + title
 
         if slot is not None:
-            affix_error = validate_affixes(title, affixes)
+            affix_error = validate_affixes(title, affixes, rarity=rarity, slot=slot)
             if affix_error:
                 issues.append(affix_error)
             invalid_lines = unparsed_affix_lines(
