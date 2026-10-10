@@ -8,23 +8,27 @@ import com.yurii.dungeonrushloot.model.EquipmentImportResult
 import com.yurii.dungeonrushloot.model.OcrSpanDto
 import com.yurii.dungeonrushloot.model.RelativeRect
 import kotlin.math.abs
+import org.json.JSONArray
+import org.json.JSONObject
 
 class EquipmentScreenshotImporter(
     private val context: Context,
     private val bridge: PythonDecisionBridge,
+    private val appLog: ApplicationLogAdapter,
     private val crop: RelativeRect,
     private val levelCrop: RelativeRect,
 ) {
     suspend fun import(uris: List<Uri>): List<EquipmentImportResult> {
         val ocr = MlKitOcrAdapter()
         return try {
-            uris.map { uri -> importOne(uri, ocr) }
+            uris.mapIndexed { index, uri -> importOne(index, uri, ocr) }
         } finally {
             ocr.close()
         }
     }
 
     private suspend fun importOne(
+        index: Int,
         uri: Uri,
         ocr: MlKitOcrAdapter,
     ): EquipmentImportResult {
@@ -52,7 +56,28 @@ class EquipmentScreenshotImporter(
             val level50 = ocr.recognizeLines(frame, levelCrop, scale = 5.0f)
             val levelSpans = mergeRows(level35, level50)
 
-            bridge.importEquipment(spans, levelSpans)
+            val result = bridge.importEquipment(spans, levelSpans)
+            appLog.info(
+                category = "equipment_import",
+                event = "image_processed",
+                message = "Equipment screenshot OCR and parsing completed.",
+                details = JSONObject()
+                    .put("image_index", index)
+                    .put("image_width", bitmap.width)
+                    .put("image_height", bitmap.height)
+                    .put("main_2_5x", spansJson(main25))
+                    .put("main_3_5x", spansJson(main35))
+                    .put("main_merged", spansJson(spans))
+                    .put("level_3_5x", spansJson(level35))
+                    .put("level_5_0x", spansJson(level50))
+                    .put("level_merged", spansJson(levelSpans))
+                    .put(
+                        "parser_result",
+                        runCatching { JSONObject(result.rawJson) }
+                            .getOrElse { JSONObject().put("raw", result.rawJson) },
+                    ),
+            )
+            result
         } finally {
             bitmap.recycle()
         }
@@ -92,6 +117,11 @@ class EquipmentScreenshotImporter(
         val usefulCharacters = span.text.count { it.isLetterOrDigit() || it in "+-.%[]" }
         return usefulCharacters + span.score.toDouble()
     }
+
+    private fun spansJson(spans: List<OcrSpanDto>): JSONArray =
+        JSONArray().apply {
+            spans.forEach { put(it.toJson()) }
+        }
 
     companion object {
         private const val ROW_MATCH_TOLERANCE_PX = 14
