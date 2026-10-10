@@ -174,13 +174,21 @@ data class DecisionEvent(
                 message = json.optString("message"),
                 candidateJson = candidate?.toString(),
                 candidateKey = candidate?.let {
-                    buildString {
-                        append(it.optString("rarity"))
-                        append(':')
-                        append(it.optInt("level", -1))
-                        append(':')
-                        append(it.optJSONArray("stats")?.toString().orEmpty())
-                    }
+                    // Compare complete item identity across the two fresh
+                    // screenshots, not just rarity/level/stats of the candidate.
+                    // This catches title/slot/equipped-item changes as well.
+                    val equipped = json.optJSONObject("equipped")
+                    listOf(
+                        json.optString("slot"),
+                        it.optString("title"),
+                        it.optString("rarity"),
+                        it.optInt("level", -1).toString(),
+                        it.optJSONArray("stats")?.toString().orEmpty(),
+                        equipped?.optString("title").orEmpty(),
+                        equipped?.optString("rarity").orEmpty(),
+                        equipped?.optInt("level", -1).toString(),
+                        equipped?.optJSONArray("stats")?.toString().orEmpty(),
+                    ).joinToString("|")
                 },
                 equippedScore = json.optJSONObject("equipped_score")?.optDouble("total"),
                 candidateScore = json.optJSONObject("candidate_score")?.optDouble("total"),
