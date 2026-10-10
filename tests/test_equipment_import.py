@@ -240,7 +240,7 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
             else:
                 item = {
                     "title": slot.value, "rarity": "Divine", "level": 100,
-                    "stats": {"damage": 1, "health": 1, "critical chance": 1, "attack speed": 1},
+                    "stats": {"damage": 1, "health": 1, "critical chance": 1},
                 }
             rows.append({"slot": slot.value, "item": item})
 
