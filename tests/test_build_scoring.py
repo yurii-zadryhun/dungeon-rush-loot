@@ -231,7 +231,6 @@ class EquipmentRepositoryTest(unittest.TestCase):
                         "health": 1 + index,
                         "damage": 2 + index,
                         "block chance": 1,
-                        "health regen": 1,
                     },
                 }
         return payload
