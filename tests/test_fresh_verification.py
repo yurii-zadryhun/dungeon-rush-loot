@@ -46,6 +46,40 @@ CANDIDATE = item(
 )
 
 
+def equipment_fixture() -> dict:
+    default_stats = {
+        "attack speed": 10, "critical chance": 5, "damage": 5,
+    }
+    equipment = {
+        slot.value: {
+            "title": "Divine " + slot.value,
+            "rarity": "Divine", "level": 100, "stats": dict(default_stats),
+        }
+        for slot in EquipmentSlot
+        if slot not in (EquipmentSlot.WINGS, EquipmentSlot.CAPE)
+    }
+    equipment["helmet"] = {
+        "title": EQUIPPED.title, "rarity": EQUIPPED.rarity,
+        "level": EQUIPPED.level,
+        "stats": {s.name: s.value for s in EQUIPPED.stats},
+    }
+    equipment["wings"] = {
+        "title": "Eternal", "rarity": "Divine", "level": 100,
+        "primary": {"attack": 2250000, "health": 7500000},
+        "stats": {
+            "ranged damage": 13.13, "critical damage": 79.10,
+            "damage": 13.19, "critical chance": 11.06,
+            "attack speed": 30.50,
+        },
+    }
+    equipment["cape"] = {
+        "title": "Divine Cloak", "rarity": "Mythic", "level": 31,
+        "intrinsic_stats": {"damage": 80, "health": 80},
+        "stats": {"critical damage": 33.25, "critical chance": 8.89},
+    }
+    return equipment
+
+
 def comparison(
     equipped: ParsedItem = EQUIPPED,
     candidate: ParsedItem = CANDIDATE,
@@ -121,8 +155,6 @@ class FreshVerificationIdentityTest(unittest.TestCase):
     def test_json_bridge_emits_semantic_key_when_live_card_passes(self):
         # Integration: two ML Kit OCR passes with different glyph rendering,
         # confidence, y offsets and stat order MUST agree on the same item.
-        from tests.test_android_bridge import _equipment
-
         def spans(typo: bool, reversed_affixes: bool) -> str:
             helmet = [
                 "+18.92% Lifesteal", "+1.98% Ranged Damage", "+10.82% Critical Chance",
@@ -156,7 +188,7 @@ class FreshVerificationIdentityTest(unittest.TestCase):
                 for i, row in enumerate(rows)
             ])
 
-        raw_equipment = json.dumps(_equipment())
+        raw_equipment = json.dumps(equipment_fixture())
         first = json.loads(evaluate_spans_json(spans(False, False), raw_equipment, "pvp"))
         verified = json.loads(evaluate_spans_json(spans(True, True), raw_equipment, "pvp"))
         self.assertEqual(first["status"], "ok", first["message"])
@@ -166,9 +198,7 @@ class FreshVerificationIdentityTest(unittest.TestCase):
         self.assertTrue(first["verification_key"])
 
     def test_invalid_bridge_result_does_not_return_verified_key(self):
-        from tests.test_android_bridge import _equipment
-
-        invalid = json.loads(evaluate_spans_json("[]", json.dumps(_equipment()), "pvp"))
+        invalid = json.loads(evaluate_spans_json("[]", json.dumps(equipment_fixture()), "pvp"))
         self.assertEqual(invalid["status"], "check_ocr")
         self.assertIsNone(invalid["verification_key"])
 
