@@ -49,14 +49,14 @@ class MeleeRegressionTest(unittest.TestCase):
         parsed = parser.parse([OcrLine("Divine Hammer [Meele]", 0.99, Box(0, 0, 200, 20))])
         self.assertTrue(parsed.melee)
 
-    def test_rejection_formats_as_sell_rejected(self):
+    def test_malformed_melee_without_loadout_fails_closed(self):
         comparer = ItemComparer()
         equipped = item("Divine Ring", 9, 100)
         candidate = item("Divine Hammer [Meele]", 9, 100)
         comparison = comparer.compare(equipped, candidate)
-        self.assertEqual(comparison.status, ComparisonStatus.OK)
-        self.assertEqual(comparison.action, Action.SELL)
-        self.assertEqual(str(ComparisonFormatter.summary(comparison, False)), "🔴 SELL · REJECTED")
+        self.assertEqual(comparison.status, ComparisonStatus.CHECK_OCR)
+        self.assertEqual(comparison.action, Action.CHECK)
+        self.assertEqual(str(ComparisonFormatter.summary(comparison, False)), "🟡 CHECK OCR")
 
 
 class GestureTest(unittest.TestCase):
@@ -125,14 +125,14 @@ class ConsolePresenterTest(unittest.TestCase):
         output = self.buffer.getvalue()
         self.assertRegex(output, r"\[\d{2}:\d{2}:\d{2}\] 🟡 CHECK OCR · unclear text")
 
-    def test_result_ok_includes_timestamp(self):
+    def test_unverified_melee_does_not_log_a_sell(self):
         comparer = ItemComparer()
         equipped = item("Divine Ring", 9, 100)
         candidate = item("Divine Hammer [Meele]", 9, 100)
         comp = comparer.compare(equipped, candidate)
         self.presenter.result(comp)
         output = self.buffer.getvalue()
-        self.assertRegex(output, r"\[\d{2}:\d{2}:\d{2}\] 🔴 SELL · REJECTED")
+        self.assertRegex(output, r"\[\d{2}:\d{2}:\d{2}\] 🟡 CHECK OCR")
 
 
 class WatchStateAndTtlTest(unittest.TestCase):
