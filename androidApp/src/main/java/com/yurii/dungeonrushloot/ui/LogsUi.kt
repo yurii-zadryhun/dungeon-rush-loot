@@ -1,5 +1,8 @@
 package com.yurii.dungeonrushloot.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,17 +28,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.weight
 import com.yurii.dungeonrushloot.app.AppGraph
 import com.yurii.dungeonrushloot.model.DecisionLogEntry
 import com.yurii.dungeonrushloot.model.LogSession
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -46,6 +56,47 @@ fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
     val sessions by graph.logs.sessions.collectAsState()
     val activeSessionId by graph.logs.activeSessionId.collectAsState()
     val revision by graph.logs.revision.collectAsState()
+    val appLogRevision by graph.appLog.revision.collectAsState()
+    val appLogLineCount by graph.appLog.lineCount.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val exportAppLog = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/x-ndjson"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val failure = runCatching {
+                withContext(Dispatchers.IO) {
+                    graph.appLog.info(
+                        category = "app_log",
+                        event = "export_started",
+                        message = "Application log export started.",
+                    )
+                    val output = requireNotNull(context.contentResolver.openOutputStream(uri, "w")) {
+                        "Could not open export destination."
+                    }
+                    output.use(graph.appLog::exportTo)
+                }
+            }.exceptionOrNull()
+
+            if (failure == null) {
+                Toast.makeText(context, "Application log exported", Toast.LENGTH_SHORT).show()
+            } else {
+                graph.appLog.error(
+                    category = "app_log",
+                    event = "export_failed",
+                    message = "Application log export failed.",
+                    throwable = failure,
+                )
+                Toast.makeText(
+                    context,
+                    failure.message ?: "Export failed",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
 
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var visibleCount by rememberSaveable { mutableIntStateOf(LOG_PAGE_SIZE) }
@@ -93,6 +144,13 @@ fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
         )
 
+        ApplicationLogRow(
+            lineCount = appLogLineCount,
+            sizeBytes = remember(appLogRevision) { graph.appLog.sizeBytes },
+            onExport = { exportAppLog.launch(graph.appLog.exportFileName) },
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        )
+
         SessionChooser(
             sessions = sessions,
             selected = selectedSession,
@@ -131,6 +189,32 @@ fun LogsScreen(graph: AppGraph, modifier: Modifier = Modifier) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ApplicationLogRow(
+    lineCount: Int,
+    sizeBytes: Long,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Application log", fontWeight = FontWeight.Bold)
+            Text(
+                "$lineCount events · " + formatBytes(sizeBytes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedButton(onClick = onExport) {
+            Text("Export")
         }
     }
 }
@@ -323,6 +407,12 @@ private fun shortDateTime(value: String): String {
 
 private fun formatOne(value: Double): String =
     if (value.isNaN()) "—" else String.format(Locale.US, "%.1f", value)
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+    else -> "$bytes B"
+}
 
 private fun formatStat(value: Double, name: String): String =
     String.format(Locale.US, "%+.2f%% %s", value, name)
