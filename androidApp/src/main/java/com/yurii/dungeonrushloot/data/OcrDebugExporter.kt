@@ -26,6 +26,10 @@ class OcrDebugExporter(private val context: Context) {
         decision: DecisionEvent?,
         evaluationError: String? = null,
     ): String {
+        require(snapshot.cropLeft >= 0 && snapshot.cropTop >= 0)
+        require(snapshot.cropRight <= frame.bitmap.width && snapshot.cropBottom <= frame.bitmap.height)
+        require(snapshot.cropLeft < snapshot.cropRight && snapshot.cropTop < snapshot.cropBottom)
+        require(snapshot.inputWidth > 0 && snapshot.inputHeight > 0 && snapshot.scale >= 1f)
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date(frame.capturedAtMillis))
@@ -33,6 +37,8 @@ class OcrDebugExporter(private val context: Context) {
 
         val meta = JSONObject()
             .put("schema_version", 1)
+            .put("screenshot_source", "AccessibilityService.takeScreenshot")
+            .put("ocr_preprocessing", "source crop -> bilinear scale -> ML Kit Latin lines")
             .put("capture_timestamp_ms", frame.capturedAtMillis)
             .put("frame_width", frame.bitmap.width)
             .put("frame_height", frame.bitmap.height)
