@@ -15,7 +15,7 @@ from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_
 # an explicit +/- sign, an unambiguous known skill, and an in-range value.
 STAT_NUMBER_RE = re.compile(
     r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
-    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
+    r"\s*(?P<suffix>%+|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
 LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
@@ -229,7 +229,7 @@ class LootItemParser:
         remainder = self._clean_label(clean[match.end():])
         # Only a real percent or a close visual glyph variant counts as a
         # recognized separator. Wholly missing separators require a sign.
-        repaired_separator = suffix not in {"%"}
+        repaired_separator = not suffix.startswith("%")
         if repaired_separator and not numeric.lstrip().startswith(("+", "-")):
             return None, 1
 
