@@ -23,6 +23,7 @@ data class SkillDefinition(
     val name: String,
     val perItemCap: Double,
     val category: String,
+    val exceptional: Boolean,
 )
 
 data class RarityDefinition(
@@ -55,6 +56,7 @@ data class AppConfig(
                     it.getString("name"),
                     it.getDouble("per_item_cap"),
                     it.getString("category"),
+                    it.getBoolean("exceptional"),
                 )
             }
             val slots = json.getJSONArray("slots").toStringList()
