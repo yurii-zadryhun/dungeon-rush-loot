@@ -88,7 +88,7 @@ class LootCardSplitter:
     @staticmethod
     def _is_item_title(text: str) -> bool:
         stripped = normalize_text(text)
-        if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", stripped, re.I):
+        if not LootCardSplitter._title_fragment(stripped):
             return False
         match = match_standard_item([stripped])
         if match is None:
