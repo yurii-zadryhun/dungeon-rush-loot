@@ -1,10 +1,7 @@
 package com.yurii.dungeonrushloot.runtime
 
 import com.yurii.dungeonrushloot.bridge.PythonDecisionBridge
-import com.yurii.dungeonrushloot.data.OcrDebugExporter
 import android.os.SystemClock
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.yurii.dungeonrushloot.model.AppConfig
 import com.yurii.dungeonrushloot.model.DecisionEvent
 import kotlin.coroutines.coroutineContext
@@ -25,8 +22,6 @@ class AndroidLootController(
     private val appLog: ApplicationLogAdapter,
     private val bridge: PythonDecisionBridge,
     private val config: AppConfig,
-    private val debugCapture: OcrDebugCapture,
-    private val debugExporter: OcrDebugExporter,
 ) {
     private val stableForeground = StableForeground(config.targetPackage)
     private var lastHandledCandidate: String? = null
@@ -56,13 +51,6 @@ class AndroidLootController(
 
     private suspend fun tick() {
         val gameReady = stableForeground.confirmed(foreground.currentPackage(), SystemClock.elapsedRealtime())
-        // This diagnostic works with Auto OFF. It takes one screen of the
-        // foreground game, exports it, and NEVER reaches the tap pathway.
-        if (debugCapture.state.value is OcrDebugCapture.State.Armed) {
-            if (!gameReady) return
-            if (debugCapture.claim()) captureOneDebugFrame()
-            return
-        }
         if (!automation.isEnabled() || !gameReady) return
 
         val equipmentJson = equipment.currentJson()
@@ -162,48 +150,6 @@ class AndroidLootController(
             }
         } finally {
             first.frame.bitmap.recycle()
-        }
-    }
-
-    private suspend fun captureOneDebugFrame() {
-        var frame: CapturedFrame? = null
-        try {
-            val captured = screenCapture.capture()
-            frame = captured
-            val snapshot = ocr.recognizeForDebug(captured, config.crop)
-            val evaluation = runCatching {
-                bridge.evaluate(snapshot.spans, equipment.currentJson(), automation.strategyName())
-            }
-            // No bytes are kept by the app. MediaStore exports all four files
-            // in one ZIP, then publishes it atomically to Downloads.
-            val filename = withContext(Dispatchers.IO) {
-                debugExporter.export(
-                    captured, snapshot, config.crop, evaluation.getOrNull(),
-                    evaluation.exceptionOrNull()?.message,
-                )
-            }
-            debugCapture.saved(filename)
-            appLog.info(
-                category = "ocr_debug",
-                event = "capture_saved",
-                message = "One-shot OCR diagnostic ZIP saved to Downloads.",
-                details = JSONObject()
-                    .put("filename", filename)
-                    .put("ocr_line_count", snapshot.spans.size)
-                    .put("ocr_status", evaluation.getOrNull()?.status ?: "error"),
-            )
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            debugCapture.failed(error.message ?: error::class.simpleName ?: "Capture failed")
-            appLog.error(
-                category = "ocr_debug",
-                event = "capture_failed",
-                message = "Could not export one-shot OCR diagnostic ZIP.",
-                throwable = error,
-            )
-        } finally {
-            frame?.bitmap?.recycle()
         }
     }
 
