@@ -69,7 +69,7 @@ class DecisionLogStore(context: Context) : DecisionLogAdapter {
 
     @Synchronized
     override fun append(event: DecisionEvent, runtimeMessage: String?) {
-        val id = _activeSessionId.value ?: startSession(event.strategy ?: "universal").id
+        val id = _activeSessionId.value ?: return
         val json = JSONObject(event.rawJson)
         json.put(
             "runtime",
