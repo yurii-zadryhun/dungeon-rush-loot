@@ -79,7 +79,7 @@ Build scoring must aggregate all eight because Wings/Cape contribute stats.
 
 ### Standard gear
 
-The first six slots use the existing rarity/level primary-stat model and 4–5 rolled affixes.
+The first six slots use the rarity/level primary-stat model and exact rarity-specific rolled-affix composition (see current TODO).
 
 Do **not** infer the slot from English semantics like “helmet”, “backpack”, etc. The game has misleading names:
 
@@ -284,37 +284,33 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO — verified 2026-10-10
+## Current immediate TODO — rarity-exact model (2026-10-10)
 
-### Completed in android-live
+### Confirmed user rules
 
-**Requested Logs UX:** Browse screen has Application log file first, Session logs below; tapping opens separate Application/Session log detail with paginated events and detail-only Export, saving JSONL directly to Downloads via MediaStore without the Android file-picker. Application log persists and receives app launch events.
+- Common, Uncommon, Rare, Epic: **exactly 1 NORMAL** rolled affix.
+- Legendary, Mythic, Artifact, Ancient: **exactly 2 NORMAL** rolled affixes.
+- Immortal, Divine: **exactly 3 NORMAL** rolled affixes.
+- If the title contains [EXP], add **1 or 2 EXCEPTIONAL** rolled affixes; otherwise exactly 0 exceptional. Normal count does **not** decrease for EXP. Total is 1–5.
+- `Ultimate` exists in the catalog but user did NOT provide its affix count: fail closed, do not infer from tier.
+- Observed **Divine Eternal Wings without EXP has 5 normal affixes** and absolute Damage/Health primaries. This is a verified slot-specific exception. Cape's fixed primary Damage/Health percentages are not rolled affixes.
+- Semantic limitation: loss of an entire second exceptional OCR line makes a 2-exceptional item observationally identical to a valid 1-exceptional item. Visible damaged lines and missing normal affixes are detectable; don't pretend rarity determines 1 vs 2.
 
-**OCR improvements:** Shared parser tolerates levels before/after/in affix lines, fuzzy skill names, bounded percentage separator glyph confusion and wrapped titles; numerical digits are never fuzzy-repaired. Auto uses 2.5× line OCR with 3.5× fallback, raw `auto_ocr.observation` diagnostics and CHECK/no tap on unclear results. No blind Sell confirmation.
+### Implemented
 
-**Alt accounts / rarity / exceptional semantics:**
-- `src/config.py` defines `MIN_STATS=2`, `MAX_STATS=5`. All eight slots support 2–5 rolled affixes (Cape intrinsic Damage/Health aren't counted). All 11 rarities Common–Ultimate are recognized.
-- `src/affix_rules.py` is the shared rule: `[EXP]` means **at least one** exceptional rolled skill. Other rolled stats may be normal; no `[EXP]` means **zero** exceptional rolled skills. Normal range/sign/duplicates are checked in live Auto, equipment loadout deserialization, and screenshot import. Unparsed candidate-affix rows result in CHECK even if 2 valid rolls remain.
-- Import keeps the actual `[EXP]` marker in stored names **for all eight slots**, including Wings/Cape, whereas prior versions stripped the tag. OLD persisted gear with exceptional rolls may now be rejected; users must **re-import the screenshots** after updating. Never fabricate the marker from roll types.
-- `EquipmentLoadout.slot_of` uses the game catalog to disambiguate if two low-rarity items in different slots have identical level/rarity/affixes, while still requiring numeric identity match.
-- Android `EquipmentUi.kt` now uses canonical affix bounds from Python `app_config_json()` schema 3, with exceptional flags on skills for editor filtering, instant title validation and 2–5 row counts. Kotlin does not independently redefine the affix categories.
-- `tests/test_rarities_and_exp.py` covers all rarities × all slots × 2–5 × EXP/non-EXP, invalid combinations, missing OCR affixes, duplicate stats, same-identity slot disambiguation, low-rarity live Auto and special Wings/Cape marker import. Existing `tests/test_loot_ocr_variants.py` also covers hundreds of OCR formatting variants.
-- `tests/test_core.py`, `test_android_bridge.py`, `test_build_scoring.py`, `test_equipment_import.py` were updated to preserve the stricter semantics.
+- `src/config.py` owns `RARITY_NORMAL_AFFIX_COUNT`, exceptional count range (1–2), `MIN_STATS=1`, `MAX_STATS=5`.
+- `src/affix_rules.py` has centralized `affix_requirement(rarity, title, slot)` and `validate_affixes(title, stats, rarity=, slot=)`. Checks exact ordinary count, 0 vs 1–2 exceptional, duplicate/unknown names, range and sign; unknown Ultimate fails closed.
+- `src/equipment.py` enforces model during persisted JSON validation. `src/equipment_import.py` enforces model during each screenshot import. `src/scoring.py` validates both equipped/candidate live OCR items before Sell/Equip, checking raw suspicious stat lines first.
+- Android `app_config_json()` schema **4** includes `rarity_normal_affixes`, `exp_exceptional_bounds`, `divine_wings_normal_affixes`, and absolute `affix_bounds` 1–5. `Models.kt` parses these fields; `EquipmentUi.kt` editor uses dynamic count bounds for selected rarity/title, shows expected ordinary/exceptional split, and blocks Ultimate when no rule exists.
+- The broader Logs browser/detail and one-click Downloads exports remain, as do 2.5×/3.5× OCR and `auto_ocr.observation` logging.
+- `tests/test_rarities_and_exp.py` rewritten with complete all-rarity×all-slot×EXP matrix, off-by-one counts, missing affixes, OCR, Ultimate, Wings/Cape, Android schema and live low rarity scenarios. Existing regression tests and source fixtures updated for exact counts. Crucially, test for 2→1 lost exceptional acknowledges unavoidable ambiguity.
 
-### Verification (GitHub Actions)
+### Verified CI and next action
 
-- **CI green:** 76 Python tests passed on commit `55cab28e2b9da2f49c8c8392cda93335bdb8e53`, including the new rarity/EXP matrix.
-- **Android APK green:** run `38077405044` successfully completed `Build signed release APK`, `Verify signature` and `Publish rolling prerelease`. APK release source commit: `55cab28e2b9da2f49c8c8392cda93335bdb8e53`.
-- Rolling release: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/tag/android-live-latest
-- The documentation commits after that verified release do not alter Android/Python production code. The APK **has not yet been device-tested** in this iteration.
-
-### Remaining user/device checks
-
-1. Install the latest APK. **Re-import all eight current equipment screenshots** to reconstruct original `[EXP]` marker and new schema; old imports stripped it.
-2. Validate both Logs navigation and one-click Downloads export for Application log and a chosen Session log (without picker).
-3. Verify a non-[EXP] 2-affix item and an [EXP] 2-affix item on an alt account with real screenshots.
-4. Start Auto under supervision. Export the new Application log detail after any CHECK; use raw `auto_ocr.observation` to diagnose actual OCR errors instead of guessing.
-5. Only after adequate live samples, refine OCR and deterministic UI-change confirmation as necessary; fail closed and prevent unintended taps.
+- **Python CI success** on `806bdd1f`, GitHub Actions run `38078441935`: **79 tests**, both Python 3.11 and 3.12. Some earlier CI runs failed for a regex escaping bug and tests that incorrectly assumed second exceptional loss was always detectable; both addressed.
+- **Android APK for this new model is NOT yet confirmed**; earlier Android runs failed because shared Python tests were failing. Do not claim the current APK has passed Gradle or was published until the new build succeeds.
+- Next: trigger the Android APK workflow on `android-live` with a source change after tests are stable (workflow watches `src/**` and `androidApp/**`; test-only/docs changes do not trigger). Watch one workflow run through to success and verify prerelease's `target_commitish` is that SHA.
+- Then user: install new APK, **reimport existing equipment** so [EXP] markers are preserved, test 1-affix Common/Rare, 2-affix Legendary/Mythic, 3-affix Immortal/Divine, EXP1 and EXP2, and Logs→Application log→Export. Submit real `auto_ocr.observation` output if any CHECK.
 
 ## Useful game/reverse-engineering context
 
