@@ -542,6 +542,80 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(result["status"], "check_ocr")
         self.assertEqual(result["action"], "check")
 
+    def test_actual_2135_popup_requires_real_icon_level_ocr(self):
+        # Reproduced from the user's 2026-10-10 21:35 session, where
+        # *both* levels were absent from the complete ML Kit OCR spans.
+        # Android now runs targeted icon-label OCR; Python MUST NOT guess.
+        equipment = _equipment()
+        observed = [
+            ("Equipped", 1056, 142, 271),
+            ("Divine (EXP] Celestial Helmet", 1162, 218, 849),
+            ("Health 3.28M", 1230, 407, 647),
+            ("+18.92l. Lifesteal", 1288, 390, 701),
+            ("+1.98% Ranged Damage", 1336, 389, 804),
+            ("+10.82% Critical Chance", 1387, 389, 817),
+            ("+67.63% Melee Defense", 1433, 389, 803),
+            ("+6.54 Mega Crit Chance", 1480, 397, 838),
+            ("Immortal [EXP] Dread Helm", 1587, 195, 746),
+            ("Health 477.00K", 1664, 390, 694),
+            ("+2.87% Block Chance", 1716, 389, 763),
+            ("+3.19% Critical Chance", 1765, 389, 790),
+            ("+20.21% Attack Speed", 1813, 389, 782),
+            ("+10.60% Movement Speed", 1857, 390, 847),
+        ]
+
+        def event(level1=None, level2=None, extra=None, title=None):
+            rows = list(observed)
+            if title is not None:
+                rows[8] = (title, 1587, 195, 746)
+            if level1 is not None:
+                rows.append((level1, 1321, 215, 345))
+            if level2 is not None:
+                rows.append((level2, 1799, 215, 345))
+            if extra is not None:
+                rows.append(extra)
+            spans = [{
+                "text": text, "score": 0.83,
+                "box": {"left": left, "top": y,
+                        "right": right, "bottom": y + 30},
+            } for text, y, left, right in rows]
+            return json.loads(evaluate_spans_json(
+                json.dumps(spans), json.dumps(equipment), "pvp",
+            ))
+
+        missing = event()
+        self.assertEqual(missing["status"], "check_ocr")
+        self.assertIsNone(missing["equipped"]["level"])
+        self.assertIsNone(missing["candidate"]["level"])
+
+        # Missing either independent label must remain CHECK, not a guess from
+        # previously saved equipment or from a primary-stat magnitude.
+        for upper, lower in (("Lvl 87", None), (None, "Lvl 4")):
+            with self.subTest(upper=upper, lower=lower):
+                self.assertEqual(event(upper, lower)["status"], "check_ocr")
+
+        for prefix1 in ("Lvl ", "LvI ", "LvU ", "LU ", "Lv"):
+            for prefix2 in ("Lvl ", "LvI ", "LvU ", "LU ", "Lv"):
+                with self.subTest(upper=prefix1, lower=prefix2):
+                    parsed = event(prefix1 + "87", prefix2 + "4")
+                    self.assertEqual(parsed["status"], "ok", parsed["message"])
+                    self.assertEqual(parsed["slot"], "helmet")
+                    self.assertEqual(parsed["equipped"]["level"], 87)
+                    self.assertEqual(parsed["candidate"]["level"], 4)
+                    self.assertEqual(parsed["candidate"]["stats"][-1]["value"], 10.6)
+                    self.assertTrue(parsed["verification_key"])
+
+        # Do not allow contradictory icon levels to authorize an action.
+        conflicting = event(
+            "Lvl 87", "Lvl 4", ("Lvl 5", 1805, 220, 340),
+        )
+        self.assertEqual(conflicting["status"], "check_ocr")
+        self.assertEqual(conflicting["action"], "check")
+        for unreadable in ("Lvl ???", "4", "Lvl 0", "LVL 999", "Lvl 4%"):
+            with self.subTest(unreadable=unreadable):
+                self.assertEqual(event("Lvl 87", unreadable)["status"], "check_ocr")
+        self.assertEqual(event("Lvl 87", "Lvl 4", title="unreadable")["status"], "check_ocr")
+
     def test_mlkit_style_spans_flow_through_shared_parser_and_scorer(self):
         spans = [
             _span("Divine [EXP] Celestial Helmet", 0, 40),
