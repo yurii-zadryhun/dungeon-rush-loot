@@ -179,5 +179,5 @@ data class DecisionLogEntry(
     }
 }
 
-internal fun JSONArray.toObjectList(transform: (JSONObject) -> RarityDefinition): List<RarityDefinition> =
+internal fun <T> JSONArray.toObjectList(transform: (JSONObject) -> T): List<T> =
     List(length()) { index -> transform(getJSONObject(index)) }
