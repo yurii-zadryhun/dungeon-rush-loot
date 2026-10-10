@@ -220,7 +220,7 @@ class ItemComparer:
             if not item.title:
                 return f"Missing {label} item title."
             if not self.allow_partial:
-                problem = validate_affixes(item.title, item.stats)
+                problem = validate_affixes(item.title, item.stats, rarity=item.rarity)
                 if problem:
                     return f"{label}: {problem}"
             # At small rarity/affix counts, loss of just one row must not
@@ -229,10 +229,6 @@ class ItemComparer:
             if missing:
                 return f"Unparsed {label} affix lines: {missing[:3]}."
         return None
-
-    @staticmethod
-    def _valid_stat_count(item: ParsedItem) -> bool:
-        return MIN_STATS <= len(item.stats) <= MAX_STATS
 
     @staticmethod
     def _melee_rejection(
