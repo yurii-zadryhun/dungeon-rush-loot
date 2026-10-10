@@ -156,6 +156,69 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
         self.assertEqual(result.item.title, "Eternal")
         self.assertEqual(result.issues, ())
 
+    def test_real_android_cape_ocr_recovers_corrupted_intrinsics(self):
+        # Actual ML Kit merge from the uploaded application JSONL.
+        texts = [
+            "Divine Cloak", "[Mythic]", "+80.0l. Damage",
+            "+80.0l Health", "+33.25% Critical Damage",
+            "Lvl 31 +8.89% Critical Chance",
+        ]
+        result = self.parser.parse_lines([line(t, i * 35) for i, t in enumerate(texts)])
+        self.assertEqual(result.issues, ())
+        self.assertEqual(
+            {stat.name: stat.value for stat in result.item.intrinsic_stats},
+            {"damage": 80.0, "health": 80.0},
+        )
+        self.assertEqual(len(result.item.stats), 2)
+
+    def test_real_android_wings_ocr_recovers_percent_separators(self):
+        texts = [
+            "Divine", "Eternal", "Damage 2.25M", "Health 7.50M",
+            "+13.13 Ranged Damage", "+79.10% Critical Damage",
+            "+13.19% Damage", "+11.06l% Critical Chance",
+            "+30.50% Attack Speed",
+        ]
+        result = self.parser.parse_lines([line(t, i * 35) for i, t in enumerate(texts)])
+        self.assertEqual(result.issues, ())
+        self.assertEqual(result.item.level, 100)
+        self.assertEqual(
+            {stat.name: stat.value for stat in result.item.stats},
+            {
+                "ranged damage": 13.13, "critical damage": 79.10,
+                "damage": 13.19, "critical chance": 11.06,
+                "attack speed": 30.50,
+            },
+        )
+
+    def test_real_android_gloves_ocr_recovers_two_percent_separators(self):
+        texts = [
+            "Immortal", "[EXP] +11 Crimson Gloves", "Damage 379.24K",
+            "+4.50% Lifesteal", "+7.32% Ranged Damage",
+            "+19.30l% Melee Damage", "-51.74% Critical Damage Taken",
+            "+24.12 Triple Hit Chance",
+        ]
+        result = self.parser.parse_lines(
+            [line(t, i * 35) for i, t in enumerate(texts)],
+            [line("Lvl 124", 0)],
+        )
+        self.assertEqual(result.issues, ())
+        self.assertEqual(result.item.level, 124)
+        self.assertEqual(len(result.item.stats), 5)
+        self.assertEqual(
+            {stat.name: stat.value for stat in result.item.stats}["triple hit chance"],
+            24.12,
+        )
+
+    def test_missing_percent_with_out_of_range_value_fails_closed(self):
+        texts = [
+            "Divine", "Eternal", "Damage 2.25M", "Health 7.50M",
+            "+113.13 Ranged Damage", "+79.10% Critical Damage",
+            "+13.19% Damage", "+11.06% Critical Chance",
+            "+30.50% Attack Speed",
+        ]
+        result = self.parser.parse_lines([line(t, i * 35) for i, t in enumerate(texts)])
+        self.assertIn("Wings expected 5 affixes; parsed 4.", result.issues)
+
     def test_wings_and_cape_change_whole_build_metrics(self):
         rows = []
         for slot in EquipmentSlot:
