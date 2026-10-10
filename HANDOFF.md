@@ -284,7 +284,34 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO — OCR percent + fresh verification fixed (2026-10-10)
+## Current immediate TODO — uploaded log audit completed (2026-10-10)
+
+The user provided actual exported files:
+- `session-20261010-190130-547.jsonl`: 5 records: session start and four SELL/GLOVES decisions, all cancelled by old "loot changed during fresh verification".
+- `dungeon-rush-app-log.jsonl (3)`: 151 events, including 9 Auto OCR observations and 2 historical import-validation failures.
+
+### Findings
+
+1. **Previously fixed:** the import at 18:57:54 had 7/8 success; **only** Ring failed due to `+9.07%% Mega Crit Chance`. The shared parser now handles repeated percent glyphs; regression test with exact real Void Ring OCR exists.
+2. **Previously fixed:** four unsuccessful SELL/GLOVES fresh verifications at 19:01 had equal semantic candidates and equipped items but changing OCR `raw_text` and `confidence`, confirming that old `DecisionEvent.candidateKey` was unstable. This is already fixed by `src/verification.py` and the Kotlin consumer of `verification_key`.
+3. **Additional observed OCR case, fixed in this audit:** at 19:01:55 the live parser returned CHECK because ML Kit recognized `LvI 124 •7.32 Ranged Damage`; a bullet replaced + and the % was absent. In `src/parsing.py`, `LEVEL_ROW_BULLET_SIGN_RE` now recovers ONLY leading `•`/`·` from an OCR row that also contains a valid explicit level marker and intact 1–2 decimal digits. The normal stat's permitted sign and upper cap still apply. It does not infer arbitrary signs or repair numbers. `tests/test_android_bridge.py` exercises a full Gloves Auto two-card OCR-to-decision flow with the actual recorded data, plus malformed/negative cases.
+4. Also fixed APK workflow trigger: test-only commits under `tests/**` now trigger a new Android build. Previously a source-only build was green but release skipped because the branch advanced to a test-only commit before publication.
+
+### Verified
+
+- Python CI: **88 tests passed**, Python 3.11 and 3.12, GitHub run `38080621075`.
+- Android workflow: **success**, run `38080621076`, including shared Python tests, Android JVM tests, Gradle signed APK, signature verification and prerelease publish.
+- Verified rolling release `android-live-latest` SHA is **`68a82c66fc3cc8ac36d95b4aa476c9d1dfc74c6a`**, exactly matching the successful Android source SHA; release `DungeonRushLoot.apk` is 53,859,981 bytes.
+- APK link: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/download/android-live-latest/DungeonRushLoot.apk
+- **Real-device behavior for this new OCR variant is not yet retested.** It should now parse the logged `•7.32` safely, but the next device run is the empirical validation.
+
+### Follow-up
+
+Test the same alt/primary game popup. If Auto still returns CHECK or cancels, export Application log JSONL so `auto_ocr.observation` and `auto_verification.fresh_check_rejected` show the actual next cause. Do NOT revisit rarity/level scoring, `dungeon-rush-simulator` integration, or Ultimate placeholder in this bugfix.
+
+---
+
+## Previous milestone — OCR percent + fresh verification fixed (2026-10-10)
 
 ### Device reports and root causes
 
