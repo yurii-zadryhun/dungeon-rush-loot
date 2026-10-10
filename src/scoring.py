@@ -11,8 +11,10 @@ from .config import (
     BASE_SCORE_MIN_LEVEL,
     BASE_SCORE_MIN_TIER,
     LEVEL_SCALER,
+    MAX_ITEM_LEVEL,
     MAX_STATS,
     MIN_STATS,
+    SKILLS,
     TIER_SCALER,
 )
 from .domain import (
@@ -27,6 +29,7 @@ from .domain import (
     ScoreComponent,
 )
 from .equipment import EquipmentLoadout, EquipmentRepository, EquipmentStateError, beneficial_value
+from .game_catalog import match_standard_item
 from .strategies import BuildScoringStrategy
 from .text import canonical_name
 
@@ -169,8 +172,8 @@ class ItemComparer:
         self.allow_partial = allow_partial
 
     def compare(self, equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
-        if candidate.melee:
-            return self._melee_rejection(equipped, candidate)
+        # Do not bypass OCR and slot validation for hard-rejected melee drops.
+        # Even SELL is an irreversible action and must be based on real cards.
         validation_error = self._validation_error(equipped, candidate)
         if validation_error:
             return self._check(equipped, candidate, validation_error)
@@ -184,6 +187,26 @@ class ItemComparer:
             slot = loadout.slot_of(equipped)
         except EquipmentStateError as exc:
             return self._check(equipped, candidate, str(exc))
+
+        equipped_match = match_standard_item([equipped.title])
+        candidate_match = match_standard_item([candidate.title])
+        if equipped_match is None or equipped_match.slot is not slot:
+            return self._check(equipped, candidate, "Equipped title does not match its catalog slot.")
+        if candidate_match is None or candidate_match.slot is not slot:
+            return self._check(equipped, candidate, "Candidate item is not in the equipped slot (game catalog).")
+
+        if candidate.melee:
+            return Comparison(
+                status=ComparisonStatus.OK,
+                action=Action.SELL,
+                candidate=candidate,
+                equipped=equipped,
+                candidate_score=None,
+                equipped_score=None,
+                message="Melee candidate hard-rejected after full OCR and slot validation.",
+                equipment_slot=slot,
+                rejection_reason="melee",
+            )
 
         current_score = self.scorer.score(loadout, protected_slot=slot)
         candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
@@ -200,10 +223,27 @@ class ItemComparer:
         )
 
     def _validation_error(self, equipped: ParsedItem, candidate: ParsedItem) -> str | None:
-        if equipped.tier is None or candidate.tier is None or equipped.level is None or candidate.level is None:
-            return "Could not parse rarity/level required for primary-stat scoring."
-        if not self.allow_partial and (not self._valid_stat_count(equipped) or not self._valid_stat_count(candidate)):
-            return f"Expected 4-5 stats; candidate={len(candidate.stats)}, equipped={len(equipped.stats)}."
+        for label, item in (("equipped", equipped), ("candidate", candidate)):
+            if item.tier is None or item.level is None or not 1 <= item.level <= MAX_ITEM_LEVEL:
+                return f"Could not parse valid {label} rarity/level."
+            if not item.title:
+                return f"Missing {label} item title."
+            if not self.allow_partial and not self._valid_stat_count(item):
+                return f"Expected 4-5 stats; {label}={len(item.stats)}."
+            names: set[str] = set()
+            for stat in item.stats:
+                name = canonical_name(stat.name)
+                if name in names:
+                    return f"Duplicate {label} affix: {name}."
+                names.add(name)
+                rule = SKILLS.get(name)
+                if rule is None or not math.isfinite(stat.value):
+                    return f"Unknown/invalid {label} affix: {name}."
+                if abs(stat.value) > rule.cap + 0.05 or abs(stat.value) < 0.01:
+                    return f"Out-of-range {label} affix: {name}={stat.value}."
+                negative = name in {"critical damage taken", "companion cooldown"}
+                if (negative and stat.value >= 0) or (not negative and stat.value < 0):
+                    return f"Unexpected sign in {label} affix: {name}={stat.value}."
         return None
 
     @staticmethod
