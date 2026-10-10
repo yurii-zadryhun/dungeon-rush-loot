@@ -199,17 +199,12 @@ private fun AutoScreen(
                 Text("Capture failed: " + state.reason, color = MaterialTheme.colorScheme.error)
             OcrDebugCapture.State.Idle -> Unit
         }
+        if (enabled) {
+            Text("Stop Auto before arming the diagnostic capture.")
+        }
         Button(
-            onClick = {
-                // Stop Auto before arming, including any pending user session.
-                // The controller's diagnostic path never dispatches a touch.
-                if (enabled) {
-                    graph.preferences.setEnabled(false)
-                    graph.logs.endSession()
-                }
-                graph.ocrDebugCapture.arm()
-            },
-            enabled = serviceConnected && !debugPending,
+            onClick = { graph.ocrDebugCapture.arm() },
+            enabled = serviceConnected && !enabled && !debugPending,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (debugState is OcrDebugCapture.State.Failed) "Retry OCR capture"
