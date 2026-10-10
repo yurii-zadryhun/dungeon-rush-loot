@@ -164,8 +164,9 @@ class AndroidLootController(
             if (first.status != "ok") {
                 // The same higher-scale line OCR that made screenshot import
                 // reliable is used only when the first pass cannot be parsed.
-                enhanced = ocr.recognizeEnhanced(frame, config.crop)
-                val retried = bridge.evaluate(enhanced, equipmentJson, strategy)
+                val retrySpans = ocr.recognizeEnhanced(frame, config.crop)
+                enhanced = retrySpans
+                val retried = bridge.evaluate(retrySpans, equipmentJson, strategy)
                 if (retried.status == "ok") event = retried
             }
             logOcrObservation(frame, first, event, primary, enhanced)
