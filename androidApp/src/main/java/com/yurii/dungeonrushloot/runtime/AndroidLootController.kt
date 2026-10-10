@@ -67,7 +67,11 @@ class AndroidLootController(
                 return
             }
 
-            val candidateKey = first.event.candidateKey ?: return
+            val candidateKey = first.event.candidateKey
+            if (candidateKey.isNullOrBlank()) {
+                log.append(first.event, "Auto cancelled: initial item identity was not verifiable.")
+                return
+            }
             if (recentlyHandled(candidateKey)) return
 
             delay(FRESH_VERIFY_DELAY_MS)
@@ -75,12 +79,24 @@ class AndroidLootController(
 
             val verified = observe(equipmentJson, strategy)
             try {
-                if (
-                    verified.event.status != "ok" ||
-                    verified.event.action != first.event.action ||
-                    verified.event.candidateKey != candidateKey
-                ) {
-                    log.append(first.event, "Auto cancelled: loot changed during fresh verification.")
+                val rejection = FreshVerification.rejectionReason(first.event, verified.event)
+                if (rejection != null) {
+                    log.append(first.event, "Auto cancelled: " + rejection)
+                    appLog.warning(
+                        category = "auto_verification",
+                        event = "fresh_check_rejected",
+                        message = rejection,
+                        details = JSONObject()
+                            .put("first_status", first.event.status)
+                            .put("fresh_status", verified.event.status)
+                            .put("first_action", first.event.action)
+                            .put("fresh_action", verified.event.action)
+                            .put("first_slot", first.event.slot)
+                            .put("fresh_slot", verified.event.slot)
+                            .put("first_key", first.event.candidateKey)
+                            .put("fresh_key", verified.event.candidateKey)
+                            .put("fresh_ocr_message", verified.event.message),
+                    )
                     return
                 }
 
