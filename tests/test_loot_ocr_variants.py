@@ -17,9 +17,15 @@ class Card:
     stats: tuple[tuple[str, float], ...]
 
     @property
+    def exp(self) -> bool:
+        from src.config import EXCEPTIONAL_SKILLS
+        return any(name in EXCEPTIONAL_SKILLS for name, _ in self.stats)
+
+    @property
     def payload(self) -> dict:
+        marker = "[EXP] " if self.exp else ""
         return {
-            "title": f"{self.rarity} [EXP] {self.title}",
+            "title": f"{self.rarity} {marker}{self.title}",
             "rarity": self.rarity,
             "level": self.level,
             "stats": dict(self.stats),
@@ -140,16 +146,17 @@ def render_card(
     level_format: str = "Lvl {level}",
     affix_override: dict[int, str] | None = None,
 ) -> list[str]:
-    title = f"[EXP] {card.title}"
+    marker = "[EXP] " if card.exp and title_style != "plain" else ""
+    title = marker + card.title
     if title_style == "inline":
         rows = [f"{card.rarity} {title}"]
     elif title_style == "wrapped":
         first, last = card.title.rsplit(" ", 1)
-        rows = [card.rarity, f"[EXP] {first}", last]
+        rows = [card.rarity, marker + first, last]
     elif title_style == "plain":
         rows = [card.rarity, card.title]
     elif title_style == "exp_plus":
-        rows = [card.rarity, f"[EXP] +11 {card.title}"]
+        rows = [card.rarity, (f"[EXP] +11 {card.title}" if card.exp else card.title)]
     else:
         rows = [card.rarity, title]
     rows.append("Health 3.28M" if card.title in {
