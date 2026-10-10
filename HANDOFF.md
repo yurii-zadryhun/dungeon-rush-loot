@@ -308,9 +308,10 @@ A process restart must not silently resume auto-tapping. User must explicitly St
 ### Verified CI and next action
 
 - **Python CI success** on `806bdd1f`, GitHub Actions run `38078441935`: **79 tests**, both Python 3.11 and 3.12. Some earlier CI runs failed for a regex escaping bug and tests that incorrectly assumed second exceptional loss was always detectable; both addressed.
-- **Android APK for this new model is NOT yet confirmed**; earlier Android runs failed because shared Python tests were failing. Do not claim the current APK has passed Gradle or was published until the new build succeeds.
-- Next: trigger the Android APK workflow on `android-live` with a source change after tests are stable (workflow watches `src/**` and `androidApp/**`; test-only/docs changes do not trigger). Watch one workflow run through to success and verify prerelease's `target_commitish` is that SHA.
-- Then user: install new APK, **reimport existing equipment** so [EXP] markers are preserved, test 1-affix Common/Rare, 2-affix Legendary/Mythic, 3-affix Immortal/Divine, EXP1 and EXP2, and Logs→Application log→Export. Submit real `auto_ocr.observation` output if any CHECK.
+- **Android APK verified successful:** run `38078660399` on source SHA `706b7b3657bc8f23b3800b3d6dacf059dc6f4c7d` completed successfully. Shared Python tests, Gradle assembleRelease, apksigner verification, artifact upload and rolling prerelease publication all succeeded. Verified `android-live-latest` release `target_commitish` equals that exact source SHA and includes `DungeonRushLoot.apk` (53,843,601 bytes).
+- Direct APK: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/download/android-live-latest/DungeonRushLoot.apk
+- **Device validation pending:** install new APK, **re-import existing equipment** so the actual [EXP] markers are retained, test a 1-affix Common/Rare, 2-affix Legendary/Mythic, 3-affix Immortal/Divine and EXP1/EXP2 item, plus Logs→Application log→Export. If any CHECK, attach the new `auto_ocr.observation` application JSONL. No device-success claims yet.
+- `Ultimate` count remains unverified; request that specific rule from the user before enabling automation for it.
 
 ## Useful game/reverse-engineering context
 
