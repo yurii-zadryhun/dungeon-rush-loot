@@ -6,6 +6,7 @@ from typing import Sequence
 
 from .config import MAX_ITEM_LEVEL, RARITY_TIERS
 from .domain import Box, OcrLine, OcrSpan, ParsedItem, ParsedStat
+from .game_catalog import match_standard_item
 from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_like_title, normalize_text, parse_rarity
 
 
@@ -77,7 +78,11 @@ class LootCardSplitter:
         stripped = normalize_text(text)
         if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", stripped, re.I):
             return False
-        return looks_like_title(stripped)
+        if looks_like_title(stripped):
+            return True
+        # Desktop/Paddle may see plain item titles without an EXP marker.
+        # Accept only names confidently classified by the extracted APK catalog.
+        return match_standard_item([stripped]) is not None
 
     @staticmethod
     def _card_start(lines: Sequence[OcrLine], title_index: int) -> int:
