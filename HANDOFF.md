@@ -21,6 +21,23 @@ Android branch: `android-live`
 
 Latest **verified production APK source commit**: `fade8fef74e47edef9e3af0feb71aef29efb5321`. Android workflow `38082125026` and Python CI workflow `38082125040` succeeded, and `android-live-latest` release's target_commitish matches exactly. All 92 shared Python tests passed on 3.11 and 3.12; Android JVM tests, Gradle build, signature and publication succeeded. Subsequent documentation-only commits may advance the branch SHA; verify source SHA of the APK separately.
 
+## Current immediate TODO — forensic ZIP and exceptional marker regression (2026-10-10)
+
+New user evidence:
+- `dungeon-rush-ocr-debug-20261010-204511-851.zip`: `screen.png` (1080×2340), `ocr-crop.png` (810×983), `ocr-input.png` (2025×2458), `ocr.json`. **Crucial root cause:** full screenshot is the **Android Recent Apps overview**, showing Dungeon Rush only as a scaled task preview with unrelated other app cards. Bitmap crop from x=135..945 and y=936..1919 was correctly calculated but applied to **Recents preview**, not the live full-screen game, so game's outside-HUD text `Lvl 123` / `BX4` was inside the crop. Original horizontal offsets 0.125/0.875 are correct **for the full-screen game**, do not adjust them or mistake transformed OCR geometry for crop drift.
+- `session-20261010-204852-442.jsonl`: previous first pass `SELL BACKPACK` had a valid Immortal **[EXP]** Infernal Tome with exceptional `+78.56% Ranged Defense`, but fresh pass returned `candidate: Immortal requires 0-0 exceptional affixes; parsed 1`. In game screenshot the actual candidate clearly shows the `[EXP]` marker and orange exceptional skill. A fresh OCR pass can omit a bracket or the entire token; blindly inferring EXP from skill presence is not permitted. It also showed level OCR `LU1O6` / `LU 106` for Lv106.
+
+Implemented:
+- `runtime/ForegroundWindowGate.kt`: selects only a single focused *application* window; rejects ambiguous active windows. No stale previous Accessibility-event package fallback. `AccessibilityAdapters.kt` reads focused windows with `flagRetrieveInteractiveWindows`; tap adapter independently rechecks game focus immediately before gesture. `StableForeground.kt` requires game focus to settle for 800 ms before capture or Auto; controller still validates foreground during decision process.
+- `src/affix_rules.py`: `EXP_MARKER_RE` tolerates a standalone `EXP` token with missing `[` or `]`, but does **not** synthesize the marker when completely absent. Fresh Auto observes ONE additional real frame only if previous validated result was OK and fresh OCR had the specific exceptional `0-0` error. The extra observation must match full original semantic item key/action or CHECK/no tap.
+- `src/parsing.py`: explicitly accepts `LU1O6` and `LU 106` and converts O→0 ONLY inside a tagged level token; affix number digits stay strict.
+- Python regression tests in `tests/test_rarities_and_exp.py` and `tests/test_android_bridge.py`: partial EXP markers on original Infernal Tome, exact affixes and level OCR. Tests assert wholly missing EXP remains CHECK.
+- Android JVM `ForegroundWindowGateTest.kt`, `FreshVerificationTest.kt`: Recents with stale game task, focus changes/settling, rejection of ambiguity, bounded retry semantics.
+
+**Pending verification:** check Python CI + Android JVM/Gradle/signature and verify rolling release `android-live-latest` SHA matches the code from this investigation. Do not imply build is green until verified. Then install, open popup, switch back into FULLSCREEN game, wait for window settle; export another one-shot ZIP if anything still fails. Keep scoring/Ultimate unchanged.
+
+---
+
 ## Current immediate TODO — one-shot OCR screenshot ZIP (2026-10-10)
 
 The user confirmed the original 0.125/0.875 horizontal crop exactly matched
