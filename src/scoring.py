@@ -29,6 +29,7 @@ from .domain import (
     ScoreComponent,
 )
 from .equipment import EquipmentLoadout, EquipmentRepository, EquipmentStateError, beneficial_value
+from .affix_rules import unparsed_affix_lines, validate_affixes
 from .game_catalog import match_standard_item
 from .strategies import BuildScoringStrategy
 from .text import canonical_name
@@ -218,22 +219,15 @@ class ItemComparer:
                 return f"Could not parse valid {label} rarity/level."
             if not item.title:
                 return f"Missing {label} item title."
-            if not self.allow_partial and not self._valid_stat_count(item):
-                return f"Expected 4-5 stats; {label}={len(item.stats)}."
-            names: set[str] = set()
-            for stat in item.stats:
-                name = canonical_name(stat.name)
-                if name in names:
-                    return f"Duplicate {label} affix: {name}."
-                names.add(name)
-                rule = SKILLS.get(name)
-                if rule is None or not math.isfinite(stat.value):
-                    return f"Unknown/invalid {label} affix: {name}."
-                if abs(stat.value) > rule.cap + 0.05 or abs(stat.value) < 0.01:
-                    return f"Out-of-range {label} affix: {name}={stat.value}."
-                negative = name in {"critical damage taken", "companion cooldown"}
-                if (negative and stat.value >= 0) or (not negative and stat.value < 0):
-                    return f"Unexpected sign in {label} affix: {name}={stat.value}."
+            if not self.allow_partial:
+                problem = validate_affixes(item.title, item.stats)
+                if problem:
+                    return f"{label}: {problem}"
+            # At small rarity/affix counts, loss of just one row must not
+            # turn an incomplete OCR card into a plausible 2-affix candidate.
+            missing = unparsed_affix_lines(item.raw_lines, item.stats)
+            if missing:
+                return f"Unparsed {label} affix lines: {missing[:3]}."
         return None
 
     @staticmethod
