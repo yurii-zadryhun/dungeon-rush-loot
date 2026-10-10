@@ -69,6 +69,19 @@ class ApplicationLogStore(
     }
 
     @Synchronized
+    fun loadLatest(limit: Int): List<String> {
+        if (limit <= 0 || !file.exists()) return emptyList()
+        val tail = ArrayDeque<String>(limit)
+        file.forEachLine { raw ->
+            if (raw.isNotBlank()) {
+                if (tail.size == limit) tail.removeFirst()
+                tail.addLast(raw)
+            }
+        }
+        return tail.toList().asReversed()
+    }
+
+    @Synchronized
     fun exportTo(output: OutputStream) {
         FileOutputStream(file, true).use { stream ->
             stream.flush()
