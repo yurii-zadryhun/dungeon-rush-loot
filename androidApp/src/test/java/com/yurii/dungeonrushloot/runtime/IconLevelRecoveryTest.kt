@@ -1,6 +1,7 @@
 package com.yurii.dungeonrushloot.runtime
 
 import com.yurii.dungeonrushloot.model.OcrSpanDto
+import com.yurii.dungeonrushloot.model.RelativeRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -79,6 +80,15 @@ class IconLevelRecoveryTest {
         )) {
             assertTrue(IconLevelRecovery.regions(lines, 1080, 2340).isEmpty())
         }
+    }
+
+    @Test
+    fun productionCropRoundingIsPreserved() {
+        val crop = RelativeRect(0.125f, 0.40f, 0.875f, 0.82f)
+        assertEquals(OcrCropPixels(89, 614, 620, 1260),
+                     OcrCropPixels.from(crop, 709, 1536))
+        assertEquals(OcrCropPixels(135, 936, 945, 1919),
+                     OcrCropPixels.from(crop, 1080, 2340))
     }
 
     @Test
