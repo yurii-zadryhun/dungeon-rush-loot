@@ -10,6 +10,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val graph = AppGraph.get(this)
+        graph.appLog.info(
+            category = "app",
+            event = "activity_created",
+            message = "Main activity created.",
+        )
         setContent {
             DungeonRushLootApp(graph)
         }
