@@ -65,10 +65,9 @@ def validate_equipment_json(equipment_json: str) -> str:
 
 
 def import_equipment_spans_json(spans_json: str, level_spans_json: str = "[]") -> str:
-    result = EquipmentScreenshotParser().parse_spans(
-        _parse_spans(spans_json),
-        _parse_spans(level_spans_json),
-    )
+    spans = _parse_spans(spans_json)
+    level_spans = _parse_spans(level_spans_json)
+    result = EquipmentScreenshotParser().parse_spans(spans, level_spans)
     payload = {
         "status": "ok" if result.item is not None and result.slot is not None and not result.issues else "check",
         "slot": result.slot.value if result.slot else None,
@@ -76,8 +75,25 @@ def import_equipment_spans_json(spans_json: str, level_spans_json: str = "[]") -
         "issues": list(result.issues),
         "item": EquipmentCodec.serialize_item(result.item) if result.item else None,
         "raw_lines": [line.text for line in result.lines],
+        "ocr": {
+            "main": [_ocr_span_payload(span) for span in spans],
+            "level": [_ocr_span_payload(span) for span in level_spans],
+        },
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def _ocr_span_payload(span: OcrSpan) -> dict[str, object]:
+    return {
+        "text": span.text,
+        "score": span.score,
+        "box": {
+            "left": span.box.left,
+            "top": span.box.top,
+            "right": span.box.right,
+            "bottom": span.box.bottom,
+        },
+    }
 
 
 def equipment_from_imports_json(imports_json: str) -> str:
