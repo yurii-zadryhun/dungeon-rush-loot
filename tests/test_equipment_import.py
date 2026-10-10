@@ -209,6 +209,61 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
             24.12,
         )
 
+    def test_real_void_ring_doubled_percent_imports_without_warning(self):
+        # Exact ML Kit text reported on Android, not a clean synthetic "%".
+        lines = [
+            "13", "Immortal", "[EXP] 11 Void Ring", "Damage 164.42K",
+            "+3.64% Health Regen", "Lvl16", "-5.72% Companion Cooldown",
+            "+8.74% Critical Chance", "+23.09% Triple Hit Chance",
+            "+9.07%% Mega Crit Chance",
+        ]
+        parsed = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(lines)])
+        self.assertEqual(parsed.slot, EquipmentSlot.RING)
+        self.assertEqual(parsed.issues, (), parsed.issues)
+        self.assertEqual(parsed.item.level, 16)
+        self.assertEqual(
+            {stat.name: stat.value for stat in parsed.item.stats},
+            {
+                "health regen": 3.64,
+                "companion cooldown": -5.72,
+                "critical chance": 8.74,
+                "triple hit chance": 23.09,
+                "mega crit chance": 9.07,
+            },
+        )
+
+    def test_repeated_percent_ocr_variations_preserve_exact_number(self):
+        for suffix in ("%%", "%%%", "% %", "%  %", " % %"):
+            with self.subTest(suffix=suffix):
+                lines = [
+                    "Immortal", "[EXP] Void Ring", "Lvl16",
+                    "+3.64% Health Regen", "-5.72% Companion Cooldown",
+                    "+8.74% Critical Chance", "+23.09% Triple Hit Chance",
+                    "+9.07" + suffix + " Mega Crit Chance",
+                ]
+                parsed = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(lines)])
+                self.assertEqual(parsed.issues, (), parsed.issues)
+                self.assertEqual(len(parsed.item.stats), 5)
+                self.assertEqual(parsed.item.stats[-1].value, 9.07)
+
+    def test_doubled_percent_does_not_allow_broken_or_out_of_range_number(self):
+        for corrupted in (
+            "+9O.07%% Mega Crit Chance",
+            "+19.07%% Mega Crit Chance",
+            "+9.A7%% Mega Crit Chance",
+        ):
+            with self.subTest(corrupted=corrupted):
+                lines = [
+                    "Immortal", "[EXP] Void Ring", "Lvl16",
+                    "+3.64% Health Regen", "-5.72% Companion Cooldown",
+                    "+8.74% Critical Chance", "+23.09% Triple Hit Chance",
+                    corrupted,
+                ]
+                parsed = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(lines)])
+                self.assertTrue(parsed.issues, "Must reject malformed OCR, not guess digits")
+                self.assertTrue(any("Unparsed affix" in issue or "affixes" in issue
+                                    for issue in parsed.issues), parsed.issues)
+
     def test_missing_percent_with_out_of_range_value_fails_closed(self):
         texts = [
             "Divine", "Eternal", "Damage 2.25M", "Health 7.50M",
