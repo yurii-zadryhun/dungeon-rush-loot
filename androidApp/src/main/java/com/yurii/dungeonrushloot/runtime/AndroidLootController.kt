@@ -188,16 +188,31 @@ class AndroidLootController(
             val primary = ocr.recognize(frame, config.crop)
             val first = bridge.evaluate(primary, equipmentJson, strategy)
             var enhanced: List<com.yurii.dungeonrushloot.model.OcrSpanDto>? = null
+            var iconLevels: List<com.yurii.dungeonrushloot.model.OcrSpanDto>? = null
             var event = first
             if (first.status != "ok") {
-                // The same higher-scale line OCR that made screenshot import
-                // reliable is used only when the first pass cannot be parsed.
+                // A higher-scale full-popup pass can improve item text.
                 val retrySpans = ocr.recognizeEnhanced(frame, config.crop)
                 enhanced = retrySpans
                 val retried = bridge.evaluate(retrySpans, equipmentJson, strategy)
                 if (retried.status == "ok") event = retried
             }
-            logOcrObservation(frame, first, event, primary, enhanced)
+            if (event.status != "ok" &&
+                event.message.contains("rarity/level", ignoreCase = true)
+            ) {
+                // The level is painted over the item ICON, not in the affix
+                // column. ML Kit can read every affix but omit both levels.
+                // OCR a small icon ROI, then pass the ACTUAL recognized text
+                // back through the complete Python validator. No guessed levels.
+                val sourceSpans = if (enhanced != null) enhanced else primary
+                val recovered = ocr.recognizeIconLevels(frame, config.crop, sourceSpans)
+                iconLevels = recovered
+                if (recovered.isNotEmpty()) {
+                    val validated = bridge.evaluate(sourceSpans + recovered, equipmentJson, strategy)
+                    if (validated.status == "ok") event = validated
+                }
+            }
+            logOcrObservation(frame, first, event, primary, enhanced, iconLevels)
             Observation(frame, event)
         } catch (error: Throwable) {
             frame.bitmap.recycle()
@@ -211,6 +226,7 @@ class AndroidLootController(
         result: DecisionEvent,
         primary: List<com.yurii.dungeonrushloot.model.OcrSpanDto>,
         enhanced: List<com.yurii.dungeonrushloot.model.OcrSpanDto>?,
+        iconLevels: List<com.yurii.dungeonrushloot.model.OcrSpanDto>?,
     ) {
         val now = System.currentTimeMillis()
         val signature = listOf(
@@ -248,6 +264,7 @@ class AndroidLootController(
                 .put("primary_result", JSONObject(initial.rawJson))
                 .put("enhanced_scale", if (enhanced == null) JSONObject.NULL else 3.5)
                 .put("enhanced_spans", if (enhanced == null) JSONObject.NULL else spansJson(enhanced))
+                .put("icon_level_spans", if (iconLevels == null) JSONObject.NULL else spansJson(iconLevels))
                 .put("selected_result", JSONObject(result.rawJson)),
         )
     }
