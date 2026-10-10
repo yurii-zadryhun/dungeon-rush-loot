@@ -54,7 +54,14 @@ class CatalogMatch:
 
 def normalize_item_name(value: str) -> str:
     value = normalize_text(value).lower()
-    value = re.sub(r"(?:\[|\()\s*(?:range|ranged|melee)\s*(?:\]|\))", " ", value, flags=re.I)
+    value = re.sub(r"\[\s*(?:range|ranged|melee)\s*\]", " ", value, flags=re.I)
+    value = re.sub(r"\(\s*(?:range|ranged|melee)\s*\)", " ", value, flags=re.I)
+    value = re.sub(
+        r"\[\s*(?:common|uncommon|rare|epic|legendary|mythic|artifact|ancient|immortal|divine|ultimate)\s*\]",
+        " ",
+        value,
+        flags=re.I,
+    )
     value = re.sub(
         r"^.*?\bexp\b[\]\)]?[\s:+•·-]*(?:\+?\s*)?\d{1,2}\s*",
         "",
