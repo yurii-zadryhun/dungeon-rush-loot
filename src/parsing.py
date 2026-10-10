@@ -132,7 +132,7 @@ class LootCardSplitter:
             return False
         if text.lower() in {"equipped", "equip", "sell"}:
             return False
-        if LEVEL_RE.search(text) or PERCENT_RE.search(text):
+        if LEVEL_RE.search(text) or PERCENT_RE.search(text) or STAT_NUMBER_RE.search(text):
             return False
         if re.match(r"^\s*(?:damage|health)\s+\d", text, re.I):
             return False
