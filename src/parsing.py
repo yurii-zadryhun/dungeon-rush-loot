@@ -4,7 +4,7 @@ import re
 from statistics import median
 from typing import Sequence
 
-from .config import MAX_ITEM_LEVEL
+from .config import MAX_ITEM_LEVEL, RARITY_TIERS
 from .domain import Box, OcrLine, OcrSpan, ParsedItem, ParsedStat
 from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_like_title, normalize_text, parse_rarity
 
@@ -44,27 +44,47 @@ class OcrLineAssembler:
 
 
 class LootCardSplitter:
+    """Split the two visible loot cards without discarding separate rarity rows.
+
+    Positions and readable item titles, not gaps between percentage values,
+    delimit cards. A missing or ambiguous title must be CHECK, never a tap.
+    """
+
     def split(self, lines: Sequence[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]]:
-        useful = [line for line in lines if not re.fullmatch(r"\s*(?:sell|equip|equipped)\s*", line.text, re.I)]
-        by_titles = self._split_by_titles(useful)
-        return by_titles if by_titles is not None else self._split_by_percent_gap(useful)
+        useful = [
+            line for line in lines
+            if not re.fullmatch(r"\s*(?:sell|equip|equipped)\s*", line.text, re.I)
+        ]
+        titles = [
+            index for index, line in enumerate(useful)
+            if self._is_item_title(line.text)
+        ]
+        if len(titles) != 2:
+            raise ValueError(
+                f"Expected exactly two identifiable loot-card titles, got {len(titles)}."
+            )
+
+        first_title, second_title = titles
+        first_start = self._card_start(useful, first_title)
+        second_start = self._card_start(useful, second_title)
+        if first_start >= second_start or first_title >= second_start:
+            raise ValueError("Loot-card title/rarity boundaries overlap.")
+
+        return useful[first_start:second_start], useful[second_start:]
 
     @staticmethod
-    def _split_by_titles(lines: list[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]] | None:
-        indices = [i for i, line in enumerate(lines) if looks_like_title(line.text)]
-        if len(indices) < 2:
-            return None
-        first, second = indices[0], indices[1]
-        return lines[first:second], lines[second:]
+    def _is_item_title(text: str) -> bool:
+        stripped = normalize_text(text)
+        if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", stripped, re.I):
+            return False
+        return looks_like_title(stripped)
 
     @staticmethod
-    def _split_by_percent_gap(lines: list[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]]:
-        percent_lines = [line for line in lines if PERCENT_RE.search(line.text)]
-        if len(percent_lines) < 8:
-            raise ValueError("Could not reliably split equipped and candidate cards.")
-        gaps = [(right.box.center_y - left.box.center_y, (left.box.center_y + right.box.center_y) / 2) for left, right in zip(percent_lines, percent_lines[1:])]
-        split_y = max(gaps, key=lambda pair: pair[0])[1]
-        return [line for line in lines if line.box.center_y < split_y], [line for line in lines if line.box.center_y >= split_y]
+    def _card_start(lines: Sequence[OcrLine], title_index: int) -> int:
+        if title_index == 0:
+            return 0
+        previous = normalize_text(lines[title_index - 1].text).lower()
+        return title_index - 1 if previous in RARITY_TIERS else title_index
 
 
 class LootItemParser:
@@ -111,12 +131,15 @@ class LootItemParser:
 
     @staticmethod
     def _title(lines: Sequence[OcrLine]) -> str:
-        for line in lines:
-            if looks_like_title(line.text):
-                return normalize_text(line.text)
-        for line in lines:
+        for index, line in enumerate(lines):
             text = normalize_text(line.text)
-            if not PERCENT_RE.search(text) and not LEVEL_RE.search(text.replace(" ", "")) and text.lower() != "equipped":
+            if LootCardSplitter._is_item_title(text):
+                # Game UI often prints rarity and item title in different rows:
+                # "Divine" followed by "[EXP] Celestial Helmet".
+                if index > 0:
+                    rarity = normalize_text(lines[index - 1].text)
+                    if rarity.lower() in RARITY_TIERS:
+                        return f"{rarity} {text}"
                 return text
         return ""
 
