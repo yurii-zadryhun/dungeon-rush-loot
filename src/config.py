@@ -5,7 +5,7 @@ from typing import Final
 
 TARGET_PACKAGE: Final = "com.lavalabs.dungeonrush"
 MAX_ITEM_LEVEL: Final = 130
-MIN_STATS: Final = 4
+MIN_STATS: Final = 2
 MAX_STATS: Final = 5
 OCR_CROP_TOP: Final = 0.40
 OCR_CROP_BOTTOM: Final = 0.82
