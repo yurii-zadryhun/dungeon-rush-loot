@@ -19,9 +19,7 @@ Repository: `yurii-zadryhun/dungeon-rush-loot`
 
 Android branch: `android-live`
 
-As of 2026-10-10 the previous Kotlin compilation blocker (`androidx.compose.foundation.layout.weight` imported as a top-level extension) has been fixed in `AppUi.kt` and `LogsUi.kt` (commits `7b52aec`, `242a7aa`). The Android workflow is automatically triggered by pushes to `android-live`; the latest head with the fixes is `f9ba1d2`.
-
-**CI result not verified.** The connected GitHub workflow-run lookup returned no runs for the push commit (it only surfaces PR-triggered runs), so that is not evidence of either success or failure. Do not poll repeatedly. Check the Android APK Actions workflow manually if needed; install only an APK produced by a successful run.
+Latest **verified production APK source commit**: `fade8fef74e47edef9e3af0feb71aef29efb5321`. Android workflow `38082125026` and Python CI workflow `38082125040` succeeded, and `android-live-latest` release's target_commitish matches exactly. All 92 shared Python tests passed on 3.11 and 3.12; Android JVM tests, Gradle build, signature and publication succeeded. Subsequent documentation-only commits may advance the branch SHA; verify source SHA of the APK separately.
 
 ## High-level architecture
 
@@ -284,7 +282,29 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO — uploaded log audit completed (2026-10-10)
+## Current immediate TODO — new live session OCR failures fixed (2026-10-10)
+
+User reported session `session-20261010-194809-529.jsonl` with five CHECK OCR events at 19:48–19:49; compared real `ocr_lines` (text, confidence and screen boxes) to `android-live`.
+
+**Distinct causes and fixes:**
+
+1. Equipped Gloves Lv124 could parse as null (displayed `Lv0`) or erroneously 123. ML Kit recognized `LvI 124 +7.32% Ranged Damage` or `Lv0124 +7.32% ...`, while a **separate, unrelated HUD label** `Lvl 123` sat far to the right of the equipment popup. `LootItemParser._level` now accepts the narrowly observed `Lv0124` spelling and ignores standalone levels outside the affix-text horizontal boundary. Two conflicting *in-card* levels still yield CHECK. `LogsUi.kt` shows `Level unreadable`, not `Lv0`, when a level really is missing.
+2. Candidate Ancient Winter Gloves sometimes had `Lvi 51 +8.54% Attack Speed BSX4` or `Bx4`. The trailing game's `x4` badge was accidentally included as part of the stat label. `_clean_label` removes **only** this explicitly recognized trailing badge, not arbitrary letters/numbers.
+3. `-44.78% Critical Damage` + separate `Taken` appeared in equipped Dread Necklace; `-39.40% Critical Damage` + `Taken` in Crimson Backpack. Title splitter wrongly glued `Taken` to the following full candidate title, discarding the essential affix suffix from the equipped card. Now complete catalog titles are accepted on their own, and wrapped-title logic does not steal the preceding text. The stat continuation correctly restores `critical damage taken`.
+4. `(LvU 106) -5.26% Companion Cooldown` is another narrowly recognized level OCR spelling, tested in the Backpack case.
+5. The 19:49:53 event had *zero OCR spans* and appropriately yielded CHECK/no tap; no action warranted without actual loot text.
+
+**Regression coverage:** `tests/test_android_bridge.py` adds four comprehensive cases replaying the logged Gloves (both level spellings, both badge spellings and right-side HUD level), Necklace, Backpack and true in-card level conflicts. They go through the full Android JSON bridge, validate the parsed affixes/levels/slot and require a verified decision where appropriate.
+
+**Verified:** **92 Python tests** pass on both 3.11 and 3.12, run `38082125040`. Android workflow `38082125026` green: shared Python, JVM tests, signed APK, signature, publish. Rolling release `android-live-latest` targets exactly `fade8fef74e47edef9e3af0feb71aef29efb5321`, file size 53,859,985 bytes.
+
+APK: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/download/android-live-latest/DungeonRushLoot.apk
+
+**Next:** Install and retest live on device. Fail-closed if new OCR patterns arise; export Application log raw `auto_ocr.observation` and relevant session logs. Future tier/level scoring calibration and `dungeon-rush-simulator` reference remain deferred. Ultimate is not currently available.
+
+---
+
+## Previous milestone — uploaded log audit completed (2026-10-10)
 
 The user provided actual exported files:
 - `session-20261010-190130-547.jsonl`: 5 records: session start and four SELL/GLOVES decisions, all cancelled by old "loot changed during fresh verification".
