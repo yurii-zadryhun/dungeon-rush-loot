@@ -5,7 +5,7 @@ from typing import Final
 
 TARGET_PACKAGE: Final = "com.lavalabs.dungeonrush"
 MAX_ITEM_LEVEL: Final = 130
-MIN_STATS: Final = 2
+MIN_STATS: Final = 1
 MAX_STATS: Final = 5
 OCR_CROP_TOP: Final = 0.40
 OCR_CROP_BOTTOM: Final = 0.82
@@ -102,6 +102,17 @@ RARITY_TIERS: Final[dict[str, int]] = {
     "divine": 9,
     "ultimate": 10,
 }
+
+
+# Exact rarity-specific NORMAL affix counts, observed/confirmed by user.
+# Ultimate has no confirmed rule; do not guess from its tier number.
+RARITY_NORMAL_AFFIX_COUNT: Final[dict[str, int]] = {
+    **{rarity: 1 for rarity in ("common", "uncommon", "rare", "epic")},
+    **{rarity: 2 for rarity in ("legendary", "mythic", "artifact", "ancient")},
+    **{rarity: 3 for rarity in ("immortal", "divine")},
+}
+MIN_EXCEPTIONAL_AFFIXES: Final = 1
+MAX_EXCEPTIONAL_AFFIXES: Final = 2
 
 TITLE_HINTS: Final = (
     "ring", "necklace", "shield", "crossbow", "mace", "bow", "sword", "staff",
