@@ -304,10 +304,17 @@ fun DecisionSummaryCard(entry: DecisionLogEntry) {
 
             val scores = scoreText(entry)
             if (scores.isNotBlank()) Text(scores)
+            // CHECK without the reason looked like an empty/broken log entry.
+            if (entry.status != "ok" && entry.status != "session" && entry.message.isNotBlank()) {
+                Text(entry.message, maxLines = if (expanded) Int.MAX_VALUE else 3,
+                    style = MaterialTheme.typography.bodySmall)
+            }
             entry.runtimeMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
             if (expanded) {
-                Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                if (entry.status == "ok" || entry.status == "session") {
+                    Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                }
                 val json = remember(entry.rawJson) { runCatching { JSONObject(entry.rawJson) }.getOrNull() }
                 json?.let { ComparisonDetails(it) }
             }
