@@ -10,7 +10,7 @@ import com.yurii.dungeonrushloot.data.EquipmentStore
 class AppGraph private constructor(context: Context) {
     private val appContext = context.applicationContext
 
-    val appLog: ApplicationLogStore by lazy { ApplicationLogStore.createIn(appContext.filesDir) }
+    val appLog: ApplicationLogStore = ApplicationLogStore.createIn(appContext.filesDir)
     val bridge: PythonDecisionBridge by lazy { PythonDecisionBridge() }
     val preferences: AutomationPreferences by lazy { AutomationPreferences(appContext) }
     val equipment: EquipmentStore by lazy { EquipmentStore(appContext) }
