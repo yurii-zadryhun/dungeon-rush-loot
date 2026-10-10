@@ -15,6 +15,7 @@ class AndroidLootController(
     private val equipment: EquipmentStateAdapter,
     private val automation: AutomationStateAdapter,
     private val log: DecisionLogAdapter,
+    private val appLog: ApplicationLogAdapter,
     private val bridge: PythonDecisionBridge,
     private val config: AppConfig,
 ) {
@@ -31,7 +32,8 @@ class AndroidLootController(
                 tick()
             } catch (error: Throwable) {
                 reportRuntimeError(
-                    (error::class.simpleName ?: "Error") + ": " + (error.message ?: "unknown error"),
+                    message = (error::class.simpleName ?: "Error") + ": " + (error.message ?: "unknown error"),
+                    throwable = error,
                 )
             }
             delay(POLL_INTERVAL_MS)
@@ -177,10 +179,24 @@ class AndroidLootController(
         }
     }
 
-    private fun reportRuntimeError(message: String) {
+    private fun reportRuntimeError(message: String, throwable: Throwable? = null) {
         val now = System.currentTimeMillis()
         if (message != lastRuntimeError || now - lastRuntimeErrorAt >= RUNTIME_ERROR_TTL_MS) {
             log.appendSystem(message)
+            if (throwable != null) {
+                appLog.error(
+                    category = "auto_runtime",
+                    event = "controller_error",
+                    message = message,
+                    throwable = throwable,
+                )
+            } else {
+                appLog.warning(
+                    category = "auto_runtime",
+                    event = "controller_warning",
+                    message = message,
+                )
+            }
             lastRuntimeError = message
             lastRuntimeErrorAt = now
         }
