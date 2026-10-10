@@ -114,7 +114,7 @@ private fun EquipmentImportReviewDialog(
     }
     val uniqueSelected = selectedSlots.filterNotNull().toSet()
     val canSave = results.size == slots.size &&
-        results.all { it.itemJson != null } &&
+        results.all { it.itemJson != null && it.issues.isEmpty() } &&
         selectedSlots.none { it == null } &&
         uniqueSelected.size == slots.size &&
         uniqueSelected == slots.toSet()
