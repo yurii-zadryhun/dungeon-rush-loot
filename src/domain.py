@@ -24,6 +24,8 @@ class EquipmentSlot(str, Enum):
     GLOVES = "gloves"
     NECKLACE = "necklace"
     RING = "ring"
+    WINGS = "wings"
+    CAPE = "cape"
 
 
 class ScoringStrategy(str, Enum):
@@ -93,6 +95,9 @@ class ParsedItem:
     raw_lines: tuple[str, ...]
     average_ocr_confidence: float
     melee: bool = False
+    primary_attack: float | None = None
+    primary_health: float | None = None
+    intrinsic_stats: tuple[ParsedStat, ...] = ()
 
 
 @dataclass(frozen=True)
