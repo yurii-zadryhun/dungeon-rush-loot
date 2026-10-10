@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 from .domain import Action
+from .config import OCR_CROP_LEFT, OCR_CROP_TOP, OCR_CROP_RIGHT, OCR_CROP_BOTTOM
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,10 @@ class LootUiProfile:
 
 
 LOOT_UI = LootUiProfile(
-    crop=RelativeRect(0.125, 0.40, 0.875, 0.82),
+    # Same constants used by the original PC OCR implementation.
+    # Android obtains this crop through app_config_json(); never duplicate
+    # fixed percentages between UI profiles and Python preprocessing.
+    crop=RelativeRect(OCR_CROP_LEFT, OCR_CROP_TOP, OCR_CROP_RIGHT, OCR_CROP_BOTTOM),
     targets={
         Action.SELL: RelativeRect(0.20, 0.842, 0.44, 0.888),
         Action.EQUIP: RelativeRect(0.56, 0.842, 0.80, 0.888),
