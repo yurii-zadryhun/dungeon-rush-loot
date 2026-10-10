@@ -25,7 +25,16 @@ The first Android adapter uses Accessibility screenshots plus the bundled ML Kit
 
 ## Logs
 
-Each START AUTO creates a new app-private JSONL session file and each STOP AUTO closes that session. Every event is appended and fsynced immediately. The Logs tab keeps old session files, auto-selects the active session, and loads entries newest-first in batches of 50 as the user scrolls. Entries are color-coded and expandable into equipped/candidate stats, before/after build scores, overcap reductions and runtime action details.
+The **Logs** tab is a file browser. **Application log** appears first, followed by individual session JSONL files. Tap a file to open its dedicated detail screen; use Back to return to the list.
+
+- Application log: one persistent JSONL in app-private storage, updated on process/activity startup and on importer, Accessibility and Auto runtime diagnostics. The detail page shows recent events and expandable raw JSON. This file is *not* mixed into session logs.
+- Session logs: each START AUTO creates one JSONL; STOP AUTO closes that session. Old files remain listed. Detail shows color-coded decisions, OCR CHECK messages, scores and expandable comparisons.
+- All log append operations flush/fsync immediately. Detail screens paginate the newest records in batches of 50.
+- **Export** is on each file's detail page, not in the file browser. It saves a raw JSONL snapshot directly into the user's **Downloads** directory using Android MediaStore, with no location/name picker and no storage permission on minSdk 30. A failed export cleans up the incomplete destination.
+
+## Live OCR parsing
+
+Android Auto attempts ML Kit Latin line OCR at 2.5× and retries 3.5× when the Python decision is CHECK. The shared Python loot parser understands separate rarity headers, wrapped item titles, lvl labels interspersed with affixes, OCR-confusable textual skill names and bounded percentage separator errors. Numeric digits are **never** Levenshtein-matched. Unknown/ambiguous titles, missing affixes, impossible rolls, signs and conflicting levels lead to CHECK/no tap. Source OCR text and parser outcomes are periodically recorded under `auto_ocr.observation` in the Application log.
 
 ## Equipment screenshot import
 
