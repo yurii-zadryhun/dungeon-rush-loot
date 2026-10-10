@@ -314,6 +314,7 @@ A process restart must not silently resume auto-tapping. User must explicitly St
 - `070549d`: negative companion cooldown is a beneficial reduction, not zero contribution.
 - `5acce93`: invalid bitmap dimension/signature comparison no longer counts as success.
 - `4cde0cc`, `552d93f`, `4d38736`: added screenshot-accurate regression and fail-closed tests; updated legacy comparison fixture to use catalog names.
+- `7dd5079` / `a0a96f4`: restore support for plain desktop/Paddle item names without [EXP] by recognizing names via the APK catalog (plus regression test).
 
 ### Immediate next actions
 
