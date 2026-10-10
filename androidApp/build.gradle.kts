@@ -13,8 +13,8 @@ android {
         applicationId = "com.yurii.dungeonrushloot.dev"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = System.getenv("ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("ANDROID_VERSION_NAME") ?: "0.1.0-dev"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
