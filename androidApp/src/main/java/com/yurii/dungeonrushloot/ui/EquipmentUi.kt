@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -24,16 +25,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.yurii.dungeonrushloot.app.AppGraph
 import com.yurii.dungeonrushloot.data.EquipmentStore
@@ -54,15 +54,22 @@ fun EquipmentScreen(graph: AppGraph, modifier: Modifier = Modifier) {
         Text("Equipment", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
             if (validation.valid) {
-                "Ready. Successful auto-equips update this state automatically."
+                "Ready. Successful auto-equips update the six normal loot slots automatically."
             } else {
-                "Configure all six slots with 4–5 affixes before enabling auto."
+                "Configure all 8 slots: six normal items, wings and cape."
             },
             color = if (validation.valid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
 
+        Column(
+            Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            EquipmentImportPanel(graph)
+        }
+
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(top = 12.dp),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(EquipmentStore.SLOT_NAMES) { slot ->
@@ -99,6 +106,17 @@ private fun EquipmentCard(slot: String, draft: EquipmentDraft, onEdit: () -> Uni
                 Text(draft.rarity + " · Lv" + draft.level)
             }
             Text(draft.title.ifBlank { "Unnamed / not configured" })
+
+            if (slot == "wings") {
+                draft.primaryAttack?.let { Text("Primary Damage " + compactEquipmentNumber(it)) }
+                draft.primaryHealth?.let { Text("Primary Health " + compactEquipmentNumber(it)) }
+            }
+            if (slot == "cape") {
+                draft.intrinsicStats.forEach { (name, value) ->
+                    Text("Primary " + name + " " + formatPercent(value))
+                }
+            }
+
             if (draft.stats.isEmpty()) {
                 Text("No affixes", color = MaterialTheme.colorScheme.error)
             } else {
@@ -119,15 +137,22 @@ private fun EquipmentEditorDialog(
     onDismiss: () -> Unit,
     onSave: (EquipmentDraft) -> Unit,
 ) {
+    val bounds = affixBounds(slot)
     var title by remember(initial) { mutableStateOf(initial.title) }
     var rarity by remember(initial) { mutableStateOf(initial.rarity) }
     var levelText by remember(initial) { mutableStateOf(initial.level.toString()) }
-    val rows = remember(initial) {
+    var primaryAttackText by remember(initial) { mutableStateOf(initial.primaryAttack?.toString().orEmpty()) }
+    var primaryHealthText by remember(initial) { mutableStateOf(initial.primaryHealth?.toString().orEmpty()) }
+    var capeDamageText by remember(initial) {
+        mutableStateOf(initial.intrinsicStats["damage"]?.toString().orEmpty())
+    }
+    var capeHealthText by remember(initial) {
+        mutableStateOf(initial.intrinsicStats["health"]?.toString().orEmpty())
+    }
+    val rows = remember(initial, slot) {
         mutableStateListOf<EditableStat>().apply {
-            initial.stats.forEach { (name, value) ->
-                add(EditableStat(name, value.toString()))
-            }
-            while (size < 4) add(EditableStat("", ""))
+            initial.stats.forEach { (name, value) -> add(EditableStat(name, value.toString())) }
+            while (size < bounds.first) add(EditableStat("", ""))
         }
     }
     var error by remember { mutableStateOf<String?>(null) }
@@ -162,7 +187,22 @@ private fun EquipmentEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Text("Affixes (4–5)", fontWeight = FontWeight.Bold)
+                if (slot == "wings") {
+                    NumberField("Primary Damage", primaryAttackText) { primaryAttackText = it }
+                    NumberField("Primary Health", primaryHealthText) { primaryHealthText = it }
+                }
+                if (slot == "cape") {
+                    NumberField("Primary Damage %", capeDamageText) { capeDamageText = it }
+                    NumberField("Primary Health %", capeHealthText) { capeHealthText = it }
+                }
+
+                val affixLabel = if (bounds.first == bounds.second) {
+                    "Affixes (" + bounds.first + ")"
+                } else {
+                    "Affixes (" + bounds.first + "–" + bounds.second + ")"
+                }
+                Text(affixLabel, fontWeight = FontWeight.Bold)
+
                 rows.forEachIndexed { index, row ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         DropdownField(
@@ -171,28 +211,19 @@ private fun EquipmentEditorDialog(
                             label = "Stat " + (index + 1),
                             onSelected = { rows[index] = row.copy(name = it) },
                         )
-                        OutlinedTextField(
-                            value = row.value,
-                            onValueChange = { value ->
-                                val filtered = value.filter { char ->
-                                    char.isDigit() || char == '.' || char == ',' || char == '-'
-                                }
-                                rows[index] = rows[index].copy(value = filtered)
-                            },
-                            label = { Text("Value %") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (rows.size > 4) {
+                        NumberField("Value %", row.value) { value ->
+                            rows[index] = rows[index].copy(value = value)
+                        }
+                        if (rows.size > bounds.first) {
                             TextButton(onClick = { rows.removeAt(index) }) {
                                 Text("Remove")
                             }
                         }
                     }
                 }
-                if (rows.size < 5) {
+                if (rows.size < bounds.second) {
                     OutlinedButton(onClick = { rows.add(EditableStat("", "")) }) {
-                        Text("+ Add fifth affix")
+                        Text("+ Add affix")
                     }
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -204,16 +235,29 @@ private fun EquipmentEditorDialog(
                     val level = levelText.toIntOrNull()
                     val parsedRows = rows.mapNotNull { row ->
                         if (row.name.isBlank() && row.value.isBlank()) return@mapNotNull null
-                        val value = row.value.replace(',', '.').toDoubleOrNull()
+                        val value = parseNumber(row.value)
                         if (row.name.isBlank() || value == null) return@mapNotNull null
                         row.name to value
                     }
+                    val primaryAttack = parseNumber(primaryAttackText)
+                    val primaryHealth = parseNumber(primaryHealthText)
+                    val capeDamage = parseNumber(capeDamageText)
+                    val capeHealth = parseNumber(capeHealthText)
+
                     error = when {
                         level == null || level !in 1..130 -> "Level must be 1–130."
-                        parsedRows.size !in 4..5 -> "Exactly 4 or 5 valid affixes are required."
+                        parsedRows.size !in bounds.first..bounds.second ->
+                            "Expected " + bounds.first + "–" + bounds.second + " valid affixes."
                         parsedRows.map { it.first }.distinct().size != parsedRows.size -> "Affixes must be unique."
+                        slot == "wings" && (primaryAttack == null || primaryAttack <= 0) ->
+                            "Wings require positive primary Damage."
+                        slot == "wings" && (primaryHealth == null || primaryHealth <= 0) ->
+                            "Wings require positive primary Health."
+                        slot == "cape" && capeDamage == null -> "Cape requires primary Damage %."
+                        slot == "cape" && capeHealth == null -> "Cape requires primary Health %."
                         else -> null
                     }
+
                     if (error == null) {
                         onSave(
                             EquipmentDraft(
@@ -222,6 +266,14 @@ private fun EquipmentEditorDialog(
                                 level = level!!,
                                 stats = LinkedHashMap<String, Double>().apply {
                                     parsedRows.forEach { (name, value) -> put(name, value) }
+                                },
+                                primaryAttack = if (slot == "wings") primaryAttack else null,
+                                primaryHealth = if (slot == "wings") primaryHealth else null,
+                                intrinsicStats = linkedMapOf<String, Double>().apply {
+                                    if (slot == "cape") {
+                                        put("damage", capeDamage!!)
+                                        put("health", capeHealth!!)
+                                    }
                                 },
                             ),
                         )
@@ -234,6 +286,27 @@ private fun EquipmentEditorDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
+    )
+}
+
+@Composable
+private fun NumberField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { raw ->
+            onValueChange(
+                raw.filter { char ->
+                    char.isDigit() || char == '.' || char == ',' || char == '-'
+                },
+            )
+        },
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
@@ -272,5 +345,21 @@ private fun DropdownField(
     }
 }
 
-private fun formatPercent(value: Double): String =
+private fun affixBounds(slot: String): Pair<Int, Int> = when (slot) {
+    "wings" -> 5 to 5
+    "cape" -> 2 to 5
+    else -> 4 to 5
+}
+
+private fun parseNumber(value: String): Double? =
+    value.replace(',', '.').toDoubleOrNull()
+
+internal fun formatPercent(value: Double): String =
     String.format(Locale.US, "%+.2f%%", value)
+
+private fun compactEquipmentNumber(value: Double): String = when {
+    value >= 1_000_000_000 -> String.format(Locale.US, "%.2fB", value / 1_000_000_000)
+    value >= 1_000_000 -> String.format(Locale.US, "%.2fM", value / 1_000_000)
+    value >= 1_000 -> String.format(Locale.US, "%.2fK", value / 1_000)
+    else -> String.format(Locale.US, "%.0f", value)
+}
