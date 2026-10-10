@@ -27,10 +27,6 @@ STANDARD_SLOTS = frozenset({
 })
 
 
-def affix_bounds(slot: EquipmentSlot) -> tuple[int, int]:
-    return MIN_STATS, MAX_STATS
-
-
 def beneficial_value(name: str, value: float) -> float:
     # Both are beneficial reductions displayed as negative percentages.
     return abs(value) if canonical_name(name) in {
