@@ -54,7 +54,7 @@ class CatalogMatch:
 
 def normalize_item_name(value: str) -> str:
     value = normalize_text(value).lower()
-    value = re.sub(r"[[(]s*(?:range|ranged|melee)s*[])]", " ", value, flags=re.I)
+    value = re.sub(r"(?:\\[|\\()\\s*(?:range|ranged|melee)\\s*(?:\\]|\\))", " ", value, flags=re.I)
     value = re.sub(
         r"^.*?exp[])]?[s:+•·-]*(?:+?s*)?d{1,2}s*",
         "",
@@ -62,7 +62,7 @@ def normalize_item_name(value: str) -> str:
         count=1,
         flags=re.I,
     )
-    value = re.sub(r"^s*[+•·]s*d{1,2}s+", "", value)
+    value = re.sub(r"^\\s*[+•·]\\s*\\d{1,2}\\s+", "", value)
     return re.sub(r"[^a-z0-9_-]+", " ", value).strip()
 
 
@@ -73,7 +73,7 @@ def title_candidates(texts: Sequence[str]) -> list[str]:
         lowered = text.lower()
         if not text or PERCENT_RE.search(text) or LEVEL_RE.search(text):
             continue
-        if re.match(r"^s*(?:damage|health)s+d", text, re.I):
+        if re.match(r"^\\s*(?:damage|health)\\s+\\d", text, re.I):
             continue
         if lowered in {"x", "lock", "reroll", "reroll substats"}:
             continue
