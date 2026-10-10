@@ -34,8 +34,6 @@ jobs:
         with:
           python-version: "3.13"
 
-      - uses: android-actions/setup-android@v3
-
       - name: Install Android SDK
         run: |
           yes | sdkmanager --licenses >/dev/null || true
