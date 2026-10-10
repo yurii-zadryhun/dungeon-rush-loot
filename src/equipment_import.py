@@ -133,9 +133,8 @@ class EquipmentScreenshotParser:
 
         standard_matches = [slot for slot, pattern in STANDARD_SLOT_PATTERNS if pattern.search(combined)]
         has_both_primaries = {"damage", "health"}.issubset(primary)
-        noisy_wings_title = bool(re.search(r"\[exp\]|\+\d+|\[(?:range|ranged|melee)\]", combined, re.I))
-        if has_both_primaries and not standard_matches and not noisy_wings_title:
-            return EquipmentSlot.WINGS, 0.99, "both absolute Damage + Health primaries and clean title"
+        if has_both_primaries and not standard_matches:
+            return EquipmentSlot.WINGS, 0.99, "both absolute Damage + Health primaries"
 
         unique = set(standard_matches)
         if len(unique) == 1:
