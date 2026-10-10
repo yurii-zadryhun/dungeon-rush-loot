@@ -89,6 +89,7 @@ data class EquipmentValidation(
 )
 
 data class EquipmentImportResult(
+    val rawJson: String,
     val status: String,
     var slot: String?,
     val slotConfidence: Double,
@@ -107,6 +108,7 @@ data class EquipmentImportResult(
             val json = JSONObject(raw)
             val item = json.optJSONObject("item")
             return EquipmentImportResult(
+                rawJson = raw,
                 status = json.optString("status"),
                 slot = json.optString("slot").takeIf { it.isNotBlank() && it != "null" },
                 slotConfidence = json.optDouble("slot_confidence", 0.0),
