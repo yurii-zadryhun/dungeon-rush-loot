@@ -86,6 +86,7 @@ fun EquipmentScreen(graph: AppGraph, modifier: Modifier = Modifier) {
             initial = drafts.getValue(slot),
             rarities = graph.bridge.config.rarities.map { it.name },
             skills = graph.bridge.config.skills,
+            affixBounds = graph.bridge.config.minimumAffixes to graph.bridge.config.maximumAffixes,
             onDismiss = { editingSlot = null },
             onSave = {
                 graph.equipment.save(slot, it)
@@ -134,10 +135,11 @@ private fun EquipmentEditorDialog(
     initial: EquipmentDraft,
     rarities: List<String>,
     skills: List<SkillDefinition>,
+    affixBounds: Pair<Int, Int>,
     onDismiss: () -> Unit,
     onSave: (EquipmentDraft) -> Unit,
 ) {
-    val bounds = affixBounds(slot)
+    val bounds = affixBounds
     var title by remember(initial) { mutableStateOf(initial.title) }
     val hasExp = EXP_MARKER.containsMatchIn(title)
     val exceptionalNames = skills.asSequence().filter { it.exceptional }.map { it.name }.toSet()
@@ -351,8 +353,6 @@ private fun DropdownField(
         }
     }
 }
-
-private fun affixBounds(@Suppress("UNUSED_PARAMETER") slot: String): Pair<Int, Int> = 2 to 5
 
 private val EXP_MARKER = Regex("""(?i)(?<![a-z0-9])(?:[\[(]\s*)?exp\s*[\])]""")
 
