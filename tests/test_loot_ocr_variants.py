@@ -73,7 +73,7 @@ CARDS = {
         )),
         Card("Divine", "Sacred Gloves", 63, (
             ("critical damage", 67.20), ("critical chance", 8.20),
-            ("damage", 11.10), ("attack speed", 28.00),
+            ("damage", 11.10), ("mega crit chance", 8.00),
         )),
     ),
     EquipmentSlot.NECKLACE: (
@@ -84,7 +84,7 @@ CARDS = {
         )),
         Card("Divine", "Sacred Necklace", 44, (
             ("attack speed", 30.22), ("critical chance", 9.33),
-            ("critical damage", 85.42), ("lifesteal", 12.40),
+            ("critical damage", 85.42), ("triple hit chance", 20.00),
         )),
     ),
     EquipmentSlot.RING: (
@@ -95,7 +95,7 @@ CARDS = {
         )),
         Card("Divine", "Celestial Ring", 44, (
             ("attack speed", 30.10), ("critical chance", 10.20),
-            ("critical damage", 78.21), ("damage", 11.07),
+            ("critical damage", 78.21), ("triple hit chance", 20.00),
         )),
     ),
 }
@@ -109,7 +109,7 @@ def equipment(slot: EquipmentSlot, equipped: Card) -> str:
             "level": 100,
             "stats": {
                 "damage": 5, "health": 5,
-                "attack speed": 10, "critical chance": 5,
+                "attack speed": 10,
             },
         }
         for name in EquipmentSlot
