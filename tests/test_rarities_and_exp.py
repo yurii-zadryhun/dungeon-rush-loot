@@ -134,7 +134,7 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
                         }))
                         result = json.loads(check)
                         self.assertFalse(result["valid"])
-                        if actual == 0 and exp == 0:
+                        if not 1 <= actual + exp <= 5:
                             self.assertIn("between 1 and 5", result["error"])
                         else:
                             self.assertIn("normal affixes", result["error"])
@@ -229,7 +229,15 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
                             item["title"], truncated, rarity=rarity,
                             slot=EquipmentSlot.RING,
                         )
-                        self.assertIsNotNone(result)
+                        removed_is_exceptional = raw[missing_index][0] in EXCEPTIONAL_SKILLS
+                        if exp_count == 2 and removed_is_exceptional:
+                            # Without a visible unreadable line, losing one of
+                            # two exceptional rolls looks identical to a valid
+                            # one-exceptional [EXP] item. OCR alone cannot
+                            # distinguish these; don't claim otherwise.
+                            self.assertIsNone(result)
+                        else:
+                            self.assertIsNotNone(result)
 
     def test_live_auto_one_affix_common_and_three_plus_two_divine(self):
         for rarity, first, second in (
@@ -252,7 +260,7 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
     def test_live_auto_dropped_last_line_produces_check_not_sell(self):
         for rarity, first, second in (
             ("common", 0, 0), ("legendary", 1, 1),
-            ("immortal", 2, 2), ("divine", 0, 2),
+            ("immortal", 1, 1), ("divine", 0, 1),
         ):
             gear, lines = popup(rarity, first, second)
             full = json.loads(evaluate_spans_json(spans(lines), json.dumps(gear), "pvp"))
@@ -261,6 +269,23 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
             result = json.loads(evaluate_spans_json(spans(broken), json.dumps(gear), "pvp"))
             self.assertEqual(result["status"], "check_ocr")
             self.assertEqual(result["action"], "check")
+
+    def test_missing_one_of_two_exceptional_rolls_requires_visible_evidence(self):
+        # There are TWO permitted EXP sizes; if the entire last OCR row
+        # vanishes, rarity+EXP alone does not tell us which size it had.
+        gear, texts = popup("divine", 1, 2)
+        complete = json.loads(evaluate_spans_json(spans(texts), json.dumps(gear), "pvp"))
+        self.assertEqual(complete["status"], "ok", complete)
+        missing = texts[:-1]
+        ambiguous = json.loads(evaluate_spans_json(spans(missing), json.dumps(gear), "pvp"))
+        self.assertEqual(ambiguous["status"], "ok", ambiguous)
+
+        # But any damaged OCR stat that is still visible in the raw spans
+        # must produce CHECK rather than being discarded.
+        damaged = missing + ["+2O.00% Triple Hit Chance"]
+        checked = json.loads(evaluate_spans_json(spans(damaged), json.dumps(gear), "pvp"))
+        self.assertEqual(checked["status"], "check_ocr", checked)
+        self.assertEqual(checked["action"], "check")
 
     def test_parser_rejects_corrupted_extra_affixes_and_duplicates(self):
         stats = [
