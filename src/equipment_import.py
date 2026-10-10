@@ -12,6 +12,7 @@ from .game_catalog import (
     cape_intrinsic_value,
     expected_wing_primaries,
     infer_cape_level,
+    infer_standard_level,
     infer_wing_level,
     match_cape_name,
     match_standard_item,
@@ -155,8 +156,16 @@ class EquipmentScreenshotParser:
             elif not 1 <= len(affixes) <= 5:
                 issues.append(f"Cape affix count looks invalid: {len(affixes)}.")
 
-        elif slot is not None and not 4 <= len(affixes) <= 5:
-            issues.append(f"Standard equipment expected 4-5 affixes; parsed {len(affixes)}.")
+        elif slot is not None:
+            if level is None and tier is not None and primary_kind is not None:
+                level = infer_standard_level(
+                    slot,
+                    title,
+                    tier,
+                    primary.get(primary_kind),
+                )
+            if not 4 <= len(affixes) <= 5:
+                issues.append(f"Standard equipment expected 4-5 affixes; parsed {len(affixes)}.")
 
         if level is None:
             issues.append("Could not parse level.")
