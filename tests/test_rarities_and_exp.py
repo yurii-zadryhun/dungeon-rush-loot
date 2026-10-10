@@ -189,10 +189,46 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
             EquipmentCodec.parse_item(EquipmentSlot.WINGS, item)
 
     def test_exp_marker_recognition_with_real_ocr_variations(self):
-        for title in ("[EXP] Helmet", "[exp] Helmet", "(EXP] •11 Helmet", "EXP] 11 Helmet"):
+        for title in (
+            "[EXP] Helmet", "[exp] Helmet", "(EXP] •11 Helmet", "EXP] 11 Helmet",
+            "Immortal EXP Infernal Tome", "Immortal [EXP Infernal Tome",
+            "Immortal EXP] Infernal Tome", "Immortal (EXP Infernal Tome",
+            "Immortal [EXP] Infernal Tome",
+        ):
             self.assertTrue(has_exp_marker(title), title)
-        for title in ("EXPECTED Helmet", "EXPLOSIVE", "[ex]", "Helmet", "super_exp_item"):
+        for title in (
+            "EXPECTED Helmet", "EXPLOSIVE", "[ex]", "Helmet", "super_exp_item",
+            "Immortal Infernal Tome", "Immortal EXPI Infernal Tome",
+            "Immortal EXPN Infernal Tome",
+        ):
             self.assertFalse(has_exp_marker(title), title)
+
+    def test_infernal_tome_exp_marker_survives_broken_brackets(self):
+        # Live 20:50 session: candidate has a highlighted exceptional Ranged
+        # Defense, and the visible item title contains [EXP]. OCR sometimes
+        # loses a bracket in the fresh pass, which previously caused
+        # "requires 0-0 exceptional affixes; parsed 1".
+        stats = tuple(
+            ParsedStat(name, value, "", 0.84)
+            for name, value in (
+                ("critical chance", 3.40),
+                ("companion cooldown", -5.26),
+                ("lifesteal", 15.54),
+                ("ranged defense", 78.56),
+            )
+        )
+        for title in (
+            "Immortal [EXP] Infernal Tome",
+            "Immortal EXP] Infernal Tome",
+            "Immortal [EXP Infernal Tome",
+            "Immortal EXP Infernal Tome",
+        ):
+            with self.subTest(title=title):
+                self.assertIsNone(validate_affixes(title, stats, rarity="immortal"))
+        self.assertIn(
+            "0-0 exceptional",
+            validate_affixes("Immortal Infernal Tome", stats, rarity="immortal"),
+        )
 
     def test_low_rarity_one_affix_import_and_exp_with_two_or_three(self):
         fixtures = [
