@@ -67,6 +67,8 @@ class PrimaryPowerScorer:
 
 class PrimaryStatCalculator:
     def value(self, slot: EquipmentSlot, item: ParsedItem) -> float:
+        if slot not in PRIMARY_BASE:
+            raise ValueError(f"{slot.value} does not use the standard slot primary formula.")
         if item.tier is None or item.level is None:
             raise ValueError("Rarity/tier and level are required for primary-stat scoring.")
         return PRIMARY_BASE[slot] * (TIER_SCALER**item.tier) * (1.0 + LEVEL_SCALER * item.level)
@@ -81,12 +83,15 @@ class BuildMetricsAggregator:
         base_attack = 0.0
         base_health = 0.0
         for slot, item in loadout:
-            primary = self.primary.value(slot, item)
             if slot in ATTACK_SLOTS:
-                base_attack += primary
+                base_attack += self.primary.value(slot, item)
             elif slot in HEALTH_SLOTS:
-                base_health += primary
-            for stat in item.stats:
+                base_health += self.primary.value(slot, item)
+            elif slot is EquipmentSlot.WINGS:
+                base_attack += item.primary_attack or 0.0
+                base_health += item.primary_health or 0.0
+
+            for stat in (*item.intrinsic_stats, *item.stats):
                 name = canonical_name(stat.name)
                 stats[name] = stats.get(name, 0.0) + beneficial_value(name, stat.value)
         return BuildMetrics(
