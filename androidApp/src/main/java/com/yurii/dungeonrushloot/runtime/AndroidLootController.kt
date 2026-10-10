@@ -204,12 +204,28 @@ class AndroidLootController(
                 // column. ML Kit can read every affix but omit both levels.
                 // OCR a small icon ROI, then pass the ACTUAL recognized text
                 // back through the complete Python validator. No guessed levels.
-                val sourceSpans = if (enhanced != null) enhanced else primary
-                val recovered = ocr.recognizeIconLevels(frame, config.crop, sourceSpans)
-                iconLevels = recovered
-                if (recovered.isNotEmpty()) {
-                    val validated = bridge.evaluate(sourceSpans + recovered, equipmentJson, strategy)
-                    if (validated.status == "ok") event = validated
+                // Either full-popup pass can lose a title or a stat even
+                // though the other pass recognized it. Choose a title-bearing
+                // source for icon localization, and independently validate
+                // each full-popup result with the newly read icon labels.
+                val candidates = listOfNotNull(enhanced, primary)
+                val anchors = candidates.firstOrNull {
+                    IconLevelRecovery.regions(it, frame.bitmap.width, frame.bitmap.height).size == 2
+                }
+                if (anchors != null) {
+                    val recovered = ocr.recognizeIconLevels(frame, config.crop, anchors)
+                    iconLevels = recovered
+                    if (recovered.isNotEmpty()) {
+                        for (source in candidates) {
+                            val validated = bridge.evaluate(
+                                source + recovered, equipmentJson, strategy,
+                            )
+                            if (validated.status == "ok") {
+                                event = validated
+                                break
+                            }
+                        }
+                    }
                 }
             }
             logOcrObservation(frame, first, event, primary, enhanced, iconLevels)
