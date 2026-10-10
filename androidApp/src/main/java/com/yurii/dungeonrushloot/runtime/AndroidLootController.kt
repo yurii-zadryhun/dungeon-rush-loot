@@ -4,7 +4,10 @@ import com.yurii.dungeonrushloot.bridge.PythonDecisionBridge
 import com.yurii.dungeonrushloot.model.AppConfig
 import com.yurii.dungeonrushloot.model.DecisionEvent
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.isActive
 
 class AndroidLootController(
@@ -25,11 +28,14 @@ class AndroidLootController(
     private var lastCheckAt: Long = 0
     private var lastRuntimeError: String? = null
     private var lastRuntimeErrorAt: Long = 0
+    private var lastOcrDiagnosticAt: Long = 0
 
     suspend fun run() {
         while (coroutineContext.isActive) {
             try {
                 tick()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Throwable) {
                 reportRuntimeError(
                     message = (error::class.simpleName ?: "Error") + ": " + (error.message ?: "unknown error"),
@@ -56,6 +62,7 @@ class AndroidLootController(
         try {
             if (first.event.status != "ok") {
                 reportCheck(first.event)
+                delay(CHECK_BACKOFF_MS)
                 return
             }
 
@@ -87,6 +94,14 @@ class AndroidLootController(
                     return
                 }
 
+                if (verified.event.action == "sell" && verified.event.needsSellConfirmation) {
+                    // A confirmation modal cannot safely be handled by a tap
+                    // at a fixed screen coordinate. Leave it for manual review.
+                    log.append(verified.event, "Sell needs a confirmation modal; no automated tap was sent.")
+                    markHandled(candidateKey)
+                    return
+                }
+
                 val touched = touch.tap(target, verified.frame.bitmap.width, verified.frame.bitmap.height)
                 if (!touched) {
                     log.append(verified.event, "Gesture was rejected or cancelled by Android.")
@@ -95,25 +110,6 @@ class AndroidLootController(
                 }
 
                 var runtimeMessage = "Touch " + verified.event.action.uppercase() + " sent."
-
-                if (verified.event.action == "sell" && verified.event.needsSellConfirmation) {
-                    delay(SELL_CONFIRM_DELAY_MS)
-                    if (foreground.currentPackage() == config.targetPackage) {
-                        val confirm = verified.event.confirmSellTarget
-                        if (confirm != null) {
-                            val confirmed = touch.tap(
-                                confirm,
-                                verified.frame.bitmap.width,
-                                verified.frame.bitmap.height,
-                            )
-                            runtimeMessage += if (confirmed) {
-                                " Sell confirmation sent."
-                            } else {
-                                " Sell confirmation gesture was cancelled."
-                            }
-                        }
-                    }
-                }
 
                 if (verified.event.action == "equip") {
                     runtimeMessage += handleVerifiedEquip(verified, equipmentJson)
@@ -161,13 +157,53 @@ class AndroidLootController(
     private suspend fun observe(equipmentJson: String, strategy: String): Observation {
         val frame = screenCapture.capture()
         return try {
-            val spans = ocr.recognize(frame, config.crop)
-            val event = bridge.evaluate(spans, equipmentJson, strategy)
+            val primary = ocr.recognize(frame, config.crop)
+            val first = bridge.evaluate(primary, equipmentJson, strategy)
+            var enhanced: List<com.yurii.dungeonrushloot.model.OcrSpanDto>? = null
+            var event = first
+            if (first.status != "ok") {
+                // The same higher-scale line OCR that made screenshot import
+                // reliable is used only when the first pass cannot be parsed.
+                enhanced = ocr.recognizeEnhanced(frame, config.crop)
+                val retried = bridge.evaluate(enhanced, equipmentJson, strategy)
+                if (retried.status == "ok") event = retried
+            }
+            logOcrObservation(frame, first, event, primary, enhanced)
             Observation(frame, event)
         } catch (error: Throwable) {
             frame.bitmap.recycle()
             throw error
         }
+    }
+
+    private fun logOcrObservation(
+        frame: CapturedFrame,
+        initial: DecisionEvent,
+        result: DecisionEvent,
+        primary: List<com.yurii.dungeonrushloot.model.OcrSpanDto>,
+        enhanced: List<com.yurii.dungeonrushloot.model.OcrSpanDto>?,
+    ) {
+        val now = System.currentTimeMillis()
+        if (now - lastOcrDiagnosticAt < OCR_DIAGNOSTIC_INTERVAL_MS) return
+        lastOcrDiagnosticAt = now
+
+        fun spansJson(spans: List<com.yurii.dungeonrushloot.model.OcrSpanDto>): JSONArray =
+            JSONArray().apply { spans.forEach { put(it.toJson()) } }
+
+        appLog.info(
+            category = "auto_ocr",
+            event = "observation",
+            message = "Live loot OCR and parser diagnostics.",
+            details = JSONObject()
+                .put("width", frame.bitmap.width)
+                .put("height", frame.bitmap.height)
+                .put("primary_scale", 2.5)
+                .put("primary_spans", spansJson(primary))
+                .put("primary_result", JSONObject(initial.rawJson))
+                .put("enhanced_scale", if (enhanced == null) JSONObject.NULL else 3.5)
+                .put("enhanced_spans", if (enhanced == null) JSONObject.NULL else spansJson(enhanced))
+                .put("selected_result", JSONObject(result.rawJson)),
+        )
     }
 
     private fun reportCheck(event: DecisionEvent) {
@@ -220,7 +256,8 @@ class AndroidLootController(
         private const val POLL_INTERVAL_MS = 650L
         private const val FRESH_VERIFY_DELAY_MS = 380L
         private const val POST_TOUCH_DELAY_MS = 450L
-        private const val SELL_CONFIRM_DELAY_MS = 500L
+        private const val CHECK_BACKOFF_MS = 1_500L
+        private const val OCR_DIAGNOSTIC_INTERVAL_MS = 15_000L
         private const val CANDIDATE_TTL_MS = 10_000L
         private const val CHECK_LOG_TTL_MS = 10_000L
         private const val RUNTIME_ERROR_TTL_MS = 15_000L
