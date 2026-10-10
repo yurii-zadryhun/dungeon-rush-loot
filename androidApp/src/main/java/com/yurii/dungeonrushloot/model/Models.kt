@@ -42,6 +42,10 @@ data class AppConfig(
     val skills: List<SkillDefinition>,
     val minimumAffixes: Int,
     val maximumAffixes: Int,
+    val normalAffixesByRarity: Map<String, Int>,
+    val minExceptionalAffixes: Int,
+    val maxExceptionalAffixes: Int,
+    val divineWingsNormalAffixes: Int,
 ) {
     companion object {
         fun fromJson(raw: String): AppConfig {
@@ -73,6 +77,12 @@ data class AppConfig(
                 skills = skills,
                 minimumAffixes = json.getJSONObject("affix_bounds").getInt("min"),
                 maximumAffixes = json.getJSONObject("affix_bounds").getInt("max"),
+                normalAffixesByRarity = json.getJSONObject("rarity_normal_affixes").let { rules ->
+                    rules.keys().asSequence().associateWith { rules.getInt(it) }
+                },
+                minExceptionalAffixes = json.getJSONObject("exp_exceptional_bounds").getInt("min"),
+                maxExceptionalAffixes = json.getJSONObject("exp_exceptional_bounds").getInt("max"),
+                divineWingsNormalAffixes = json.getInt("divine_wings_normal_affixes"),
             )
         }
     }
