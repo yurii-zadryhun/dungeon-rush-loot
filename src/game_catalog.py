@@ -43,6 +43,52 @@ WING_HEALTH_BASE = 30.0
 WING_LEVEL_SCALER = 0.014999999664723873
 WING_TIER_SCALER = 3.1622776985168457
 
+STANDARD_TIER_SCALER = 3.1622776985168457
+STANDARD_LEVEL_SCALER = 0.014999999664723873
+STANDARD_PRIMARY_BASE = {
+    EquipmentSlot.GLOVES: 6.0,
+    EquipmentSlot.RING: 6.0,
+    EquipmentSlot.HELMET: 45.0,
+    EquipmentSlot.BACKPACK: 30.0,
+    EquipmentSlot.NECKLACE: 20.0,
+}
+# The current game has different weapon bases for melee and ranged weapons.
+# These names are extracted from the same v55 serialized equipment catalog.
+_MELEE_WEAPON_NAMES = frozenset({
+    "arcane dagger", "battle axe", "blizzard greatsword", "crude dagger",
+    "cultistweapon", "divine mace", "dragonweapon", "dread dagger",
+    "druidic sword", "exceptional weapon", "frost greataxe", "glimmer axe",
+    "great axe", "ice dagger", "ice javelin", "infernal greatsword",
+    "iron sword", "javelin", "knight javelin", "knight sword", "mace",
+    "melee-1", "melee-2", "mystic kunai", "mystic sword", "pitchfork",
+    "royal sword", "sacred spear", "sacred sword", "sickle",
+    "soldier daggers", "soldier sword", "squire javelin", "squire sword",
+    "throwing stick", "twin dagger", "viking spear", "void javelin",
+    "void scythe", "wild axe", "wood axe", "wooden sword",
+    "scifi_tier_02_melee_weapon 1", "scifi_tier_02_melee_weapon 2",
+    "scifi_tier_03_melee_weapon 1", "scifi_tier_03_melee_weapon 2",
+    "scifi_tier_04_melee_weapon 1", "scifi_tier_04_melee_weapon 2",
+    "scifi_tier_05_melee_weapon 1", "scifi_tier_05_melee_weapon 2",
+    "scifi_tier_06_melee_weapon 1", "scifi_tier_06_melee_weapon 2",
+})
+_RANGED_WEAPON_NAMES = frozenset({
+    "arcane bow", "bow", "celestial lightning", "cultistweapon", "dragonweapon",
+    "druidic crossbow", "eternal crossbow", "exceptional weapon", "flame staff",
+    "frost bow", "ice staff", "knight crossbow", "longbow", "primitive bow",
+    "radiant staff", "range-1", "range-2", "sling", "soldier bow",
+    "squire crossbow", "tyrant staff", "undying bow", "viking bow",
+    "wild staff", "wizard staff",
+    "scifi_tier_02_range_weapon 1", "scifi_tier_02_range_weapon 2",
+    "scifi_tier_03_range_weapon 1", "scifi_tier_03_range_weapon 2",
+    "scifi_tier_04_range_weapon 1", "scifi_tier_04_range_weapon 2",
+    "scifi_tier_05_range_weapon 1", "scifi_tier_05_range_weapon 2",
+    "scifi_tier_06_range_weapon 1", "scifi_tier_06_range_weapon 2",
+    "scifi_tier_07_range_weapon 1", "scifi_tier_07_range_weapon 2",
+    "scifi_tier_08_range_weapon 1", "scifi_tier_08_range_weapon 2",
+    "scifi_tier_09_range_weapon 1", "scifi_tier_09_range_weapon 2",
+    "scifi_tier_10_range_weapon 1", "scifi_tier_10_range_weapon 2",
+})
+
 
 @dataclass(frozen=True)
 class CatalogMatch:
@@ -135,6 +181,61 @@ def match_wing_name(texts: Sequence[str]) -> tuple[str, float] | None:
 def match_cape_name(texts: Sequence[str]) -> tuple[str, float] | None:
     catalog = [(name, _display_name(name)) for name in CAPE_DEFINITIONS]
     return _best_name_match(title_candidates(texts), catalog, threshold=0.82, margin=0.08)
+
+
+def infer_standard_level(
+    slot: EquipmentSlot,
+    title: str,
+    rarity_tier: int,
+    primary_value: float | None,
+) -> int | None:
+    """Recover a standard-equipment level from its displayed primary stat.
+
+    The game shows the primary stat as an abbreviated K/M value, so a candidate
+    level is accepted only when the predicted value is within 1% of the displayed
+    value. For ambiguous generic weapon names, both melee and ranged bases are
+    tried and the level must be uniquely supported.
+    """
+    if primary_value is None or primary_value <= 0:
+        return None
+
+    bases: tuple[float, ...]
+    if slot is EquipmentSlot.WEAPON:
+        normalized = normalize_item_name(title)
+        candidates: list[float] = []
+        if normalized in _MELEE_WEAPON_NAMES:
+            candidates.append(9.0)
+        if normalized in _RANGED_WEAPON_NAMES:
+            candidates.append(7.0)
+        bases = tuple(dict.fromkeys(candidates)) or (7.0, 9.0)
+    else:
+        base = STANDARD_PRIMARY_BASE.get(slot)
+        if base is None:
+            return None
+        bases = (base,)
+
+    matches: list[tuple[float, int]] = []
+    for base in bases:
+        for level in range(1, 131):
+            predicted = (
+                base
+                * (STANDARD_TIER_SCALER ** rarity_tier)
+                * (1.0 + STANDARD_LEVEL_SCALER * level)
+            )
+            error = abs(predicted - primary_value) / max(predicted, primary_value, 1.0)
+            if error <= 0.01:
+                matches.append((error, level))
+
+    if not matches:
+        return None
+    matches.sort()
+    best_error, best_level = matches[0]
+    competing_levels = {
+        level
+        for error, level in matches
+        if error <= best_error + 0.002
+    }
+    return best_level if len(competing_levels) == 1 else None
 
 
 def infer_wing_level(rarity_tier: int, damage: float | None, health: float | None) -> int | None:
