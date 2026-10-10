@@ -284,7 +284,40 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO — rarity-exact model (2026-10-10)
+## Current immediate TODO — OCR percent + fresh verification fixed (2026-10-10)
+
+### Device reports and root causes
+
+1. Import of the actual Immortal [EXP] Void Ring failed because ML Kit rendered `+9.07%% Mega Crit Chance`. In the shared parser's `STAT_NUMBER_RE` only one literal `%` was permitted, so a doubled glyph made the entire stat unreadable and caused an unparsed-affix issue.
+2. Auto logged repeated `SELL · GLOVES` with `Auto cancelled: loot changed during fresh verification`, despite the visible popup not changing and repeated displayed scores. The Android `DecisionEvent.candidateKey` included JSON-serialized `stats` arrays with `raw_text` and `confidence`, so harmless differences between OCR frames changed the supposedly stable identity key.
+
+### Implemented and verified
+
+- `src/parsing.py`: recognizes repeated `%` separators, including `%%`, `%%%` and `% %` without changing numeric digits or caps. `tests/test_equipment_import.py` reproduces the exact ring import + malformed numeric negatives.
+- `src/verification.py`: deterministic semantic SHA-256 key for the **complete pair** of equipped/candidate items with normalized catalog names/slot, rarity, tier, level, [EXP], melee flag and sorted canonical affix name+two-decimal value pairs. Ignores raw OCR strings, confidence, span geometry, and affix order. Cannot produce a key on CHECK or unrecognized/wrong-slot titles.
+- `src/android_bridge.py` emits `verification_key`. `Models.kt` uses **only that validated key**, instead of reserializing OCR `stats` metadata. Null/missing key always means no tap.
+- `runtime/FreshVerification.kt` differentiates OCR-inconclusive, action/slot changes and semantic item-identity mismatches. `AndroidLootController.kt` still requires two independent OK passes with same semantic key and action and logs structured `auto_verification.fresh_check_rejected` diagnostics instead of a misleading generic 'loot changed'.
+- `tests/test_fresh_verification.py` includes end-to-end two-pass OCR with differing confidence, line order and percent glyph, plus checks that actual item/roll/level/rarity/EXP changes are not treated equal. Android JVM `FreshVerificationTest.kt` tests stable key usage and fail-closed behavior.
+- GitHub Python CI **success**, run `38079699127`, **87 tests**, both Python 3.11 and 3.12.
+- GitHub Android workflow **success**, run `38079699155`, source commit `a4d9821cd8f7b426150a70f04a2dcb3c42814357`. All 87 shared Python tests, Android `testReleaseUnitTest`, signed release APK build, signature verification, artifact upload, and rolling prerelease publication passed. Verified `android-live-latest` points at that exact SHA and has `DungeonRushLoot.apk` (53,859,985 bytes).
+- Direct APK: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/download/android-live-latest/DungeonRushLoot.apk
+
+### Next user/device steps
+
+- Install the new APK; retry importing the same eight screenshots, especially Void Ring with duplicated percent.
+- Re-test Auto SELL in-game with an unchanged Gloves popup. It should proceed after two semantically identical OK decisions (assuming target and other safety checks succeed).
+- If another verification rejects, export the **Application log** JSONL and locate category `auto_verification`, event `fresh_check_rejected`: it now includes first/fresh status, action, slot, semantic keys and fresh OCR error message. This will distinguish actual mismatch from unreadable second pass.
+- No claim has yet been made that the APK is tested on-device for these two fixes.
+
+### Future only — do not implement without explicit request
+
+- Revisit rarity/tier/level/primary stat score weights for all newly supported lower rarities. Earlier linear calibration assumed Immortal Lv1 approximately -20 points to Divine Lv130 approximately +15; now its extrapolation needs separate analysis. **Do not modify scoring in this bugfix.**
+- For combat and item mechanics use the existing `yurii-zadryhun/dungeon-rush-simulator` repository as a reference when genuinely needed, not proactively for these two fixes.
+- `Ultimate` is a prerelease placeholder (not currently obtainable in the game); keep it fail-closed/unconfigured. No need to ask the user for a currently unknowable count.
+
+---
+
+## Previous milestone — rarity-exact model (2026-10-10)
 
 ### Confirmed user rules
 
