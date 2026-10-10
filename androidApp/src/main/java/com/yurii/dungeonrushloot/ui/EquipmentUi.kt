@@ -139,6 +139,9 @@ private fun EquipmentEditorDialog(
 ) {
     val bounds = affixBounds(slot)
     var title by remember(initial) { mutableStateOf(initial.title) }
+    val hasExp = EXP_MARKER.containsMatchIn(title)
+    val exceptionalNames = skills.asSequence().filter { it.exceptional }.map { it.name }.toSet()
+    val availableSkills = if (hasExp) skills else skills.filterNot { it.exceptional }
     var rarity by remember(initial) { mutableStateOf(initial.rarity) }
     var levelText by remember(initial) { mutableStateOf(initial.level.toString()) }
     var primaryAttackText by remember(initial) { mutableStateOf(initial.primaryAttack?.toString().orEmpty()) }
@@ -170,7 +173,7 @@ private fun EquipmentEditorDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Title (optional)") },
+                    label = { Text("Title (include [EXP] for exceptional skills)") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 DropdownField(
@@ -207,7 +210,7 @@ private fun EquipmentEditorDialog(
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         DropdownField(
                             value = row.name.ifBlank { "Select stat" },
-                            options = skills.map { it.name },
+                            options = availableSkills.map { it.name },
                             label = "Stat " + (index + 1),
                             onSelected = { rows[index] = row.copy(name = it) },
                         )
@@ -249,6 +252,10 @@ private fun EquipmentEditorDialog(
                         parsedRows.size !in bounds.first..bounds.second ->
                             "Expected " + bounds.first + "–" + bounds.second + " valid affixes."
                         parsedRows.map { it.first }.distinct().size != parsedRows.size -> "Affixes must be unique."
+                        hasExp && parsedRows.none { it.first in exceptionalNames } ->
+                            "[EXP] items require at least one exceptional affix."
+                        !hasExp && parsedRows.any { it.first in exceptionalNames } ->
+                            "Exceptional affixes require [EXP] in the title."
                         slot == "wings" && (primaryAttack == null || primaryAttack <= 0) ->
                             "Wings require positive primary Damage."
                         slot == "wings" && (primaryHealth == null || primaryHealth <= 0) ->
@@ -345,11 +352,9 @@ private fun DropdownField(
     }
 }
 
-private fun affixBounds(slot: String): Pair<Int, Int> = when (slot) {
-    "wings" -> 5 to 5
-    "cape" -> 2 to 5
-    else -> 4 to 5
-}
+private fun affixBounds(@Suppress("UNUSED_PARAMETER") slot: String): Pair<Int, Int> = 2 to 5
+
+private val EXP_MARKER = Regex("""(?i)(?<![a-z0-9])(?:[\[(]\s*)?exp\s*[\])]""")
 
 private fun parseNumber(value: String): Double? =
     value.replace(',', '.').toDoubleOrNull()
