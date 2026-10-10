@@ -1,39 +1,92 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import math
 import re
 from typing import Sequence
 
-from .config import EXCEPTIONAL_SKILLS, MAX_STATS, MIN_STATS, SKILLS
-from .domain import ParsedStat
-from .text import canonical_name, normalize_text
+from .config import (
+    EXCEPTIONAL_SKILLS,
+    MAX_EXCEPTIONAL_AFFIXES,
+    MIN_EXCEPTIONAL_AFFIXES,
+    RARITY_NORMAL_AFFIX_COUNT,
+    SKILLS,
+)
+from .domain import EquipmentSlot, ParsedStat
+from .text import canonical_name, normalize_text, parse_rarity
 
-# Recognize the UI marker as well as observed OCR variants, such as (EXP]
-# and EXP] 11. No guessed marker is inferred from the affixes themselves.
-EXP_MARKER_RE = re.compile(r"(?<![a-z0-9])(?:[\[(]\s*)?exp\s*[\])]", re.I)
+# Recognition variants observed in device OCR, not arbitrary partial strings.
+EXP_MARKER_RE = re.compile(r"(?<![a-z0-9])(?:[\\[(]\\s*)?exp\\s*[\\])]", re.I)
 
 
 def has_exp_marker(title: str) -> bool:
     return bool(EXP_MARKER_RE.search(normalize_text(title)))
 
 
+@dataclass(frozen=True)
+class AffixRequirement:
+    normal: int
+    exceptional_min: int
+    exceptional_max: int
+
+    @property
+    def minimum(self) -> int:
+        return self.normal + self.exceptional_min
+
+    @property
+    def maximum(self) -> int:
+        return self.normal + self.exceptional_max
+
+
+def affix_requirement(
+    rarity: str,
+    title: str,
+    *,
+    slot: EquipmentSlot | None = None,
+) -> AffixRequirement:
+    key = rarity.strip().lower()
+    normal = RARITY_NORMAL_AFFIX_COUNT.get(key)
+    if normal is None:
+        raise ValueError(f"No verified affix-count rule for rarity {rarity!r}.")
+
+    # The real Divine Eternal Wings screenshot has five NORMAL rolls and no
+    # EXP marker. Wings use a separately observed item-specific mechanic.
+    # Don't reinterpret a valid Wings screen as a failed Divine 3-roll item.
+    if slot is EquipmentSlot.WINGS and key == "divine" and not has_exp_marker(title):
+        return AffixRequirement(normal=5, exceptional_min=0, exceptional_max=0)
+
+    if has_exp_marker(title):
+        return AffixRequirement(
+            normal=normal,
+            exceptional_min=MIN_EXCEPTIONAL_AFFIXES,
+            exceptional_max=MAX_EXCEPTIONAL_AFFIXES,
+        )
+    return AffixRequirement(normal=normal, exceptional_min=0, exceptional_max=0)
+
+
 def validate_affixes(
     title: str,
     stats: Sequence[ParsedStat],
     *,
-    minimum: int = MIN_STATS,
-    maximum: int = MAX_STATS,
+    rarity: str | None = None,
+    slot: EquipmentSlot | None = None,
 ) -> str | None:
-    """Central validation used by live OCR, imports, and persisted equipment.
+    """Validate the COMPLETE affix inventory, never just a broad 1-5 range.
 
-    '[EXP]' means at least one exceptional roll is present; ordinary gear may
-    not carry exceptional rolls. Never use this rule to synthesize an EXP tag.
+    Normal affixes depend on rarity; [EXP] adds one/two exceptional affixes.
+    Unknown rarity rules (including Ultimate) fail closed until verified.
     """
-    if not minimum <= len(stats) <= maximum:
-        return f"Expected {minimum}-{maximum} affixes; parsed {len(stats)}."
+    if rarity is None:
+        rarity, _ = parse_rarity(title)
+    if not rarity:
+        return "Missing rarity for exact affix validation."
+    try:
+        expectation = affix_requirement(rarity, title, slot=slot)
+    except ValueError as exc:
+        return str(exc)
 
+    normal = exceptional = 0
     seen: set[str] = set()
-    exceptional = 0
     for stat in stats:
         name = canonical_name(stat.name)
         if name in seen:
@@ -47,17 +100,26 @@ def validate_affixes(
         negative = name in {"critical damage taken", "companion cooldown"}
         if (negative and stat.value >= 0) or (not negative and stat.value <= 0):
             return f"Invalid sign for affix: {name}={stat.value}."
-        exceptional += name in EXCEPTIONAL_SKILLS
+        if name in EXCEPTIONAL_SKILLS:
+            exceptional += 1
+        else:
+            normal += 1
 
-    marked = has_exp_marker(title)
-    if marked and exceptional == 0:
-        return "[EXP] item must have at least one exceptional affix."
-    if not marked and exceptional:
-        return "Non-[EXP] item cannot have exceptional affixes."
+    if normal != expectation.normal:
+        return (
+            f"{rarity.title()} requires exactly {expectation.normal} normal affixes; "
+            f"parsed {normal}."
+        )
+    if not expectation.exceptional_min <= exceptional <= expectation.exceptional_max:
+        return (
+            f"{rarity.title()}{' [EXP]' if has_exp_marker(title) else ''} "
+            f"requires {expectation.exceptional_min}-{expectation.exceptional_max} "
+            f"exceptional affixes; parsed {exceptional}."
+        )
     return None
 
 
-# Even when two correctly read affixes survive, an unreadable third affix
+# Even when the expected number of affixes survives, an unreadable other affix
 # must never silently become a valid 2-affix item.
 _AFFIX_CANDIDATE_RE = re.compile(r"^\s*(?:[+\-]\s*\S+|\d{1,3}[.,]\S+\s+[a-z])", re.I)
 _LEVEL_RE = re.compile(r"\b(?:lvl|lv|lvi)\s*[-:.]?\s*\d{1,3}\b", re.I)
