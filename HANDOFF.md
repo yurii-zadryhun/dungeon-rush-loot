@@ -19,12 +19,9 @@ Repository: `yurii-zadryhun/dungeon-rush-loot`
 
 Android branch: `android-live`
 
-At handoff, branch head is around the application-diagnostics work. Shared Python CI is green, but the latest Android APK workflow is failing at Kotlin compilation because of bad `weight` imports/usages:
+As of 2026-10-10 the previous Kotlin compilation blocker (`androidx.compose.foundation.layout.weight` imported as a top-level extension) has been fixed in `AppUi.kt` and `LogsUi.kt` (commits `7b52aec`, `242a7aa`). The Android workflow is automatically triggered by pushes to `android-live`; the latest head with the fixes is `f9ba1d2`.
 
-- `AppUi.kt:14:43 Cannot access 'val RowColumnParentData?.weight: Float': it is internal in file.`
-- `LogsUi.kt:40:43 Cannot access 'val RowColumnParentData?.weight: Float': it is internal in file.`
-
-Fix this first, then build Android once. Do not wait synchronously for workflow completion.
+**CI result not verified.** The connected GitHub workflow-run lookup returned no runs for the push commit (it only surfaces PR-triggered runs), so that is not evidence of either success or failure. Do not poll repeatedly. Check the Android APK Actions workflow manually if needed; install only an APK produced by a successful run.
 
 ## High-level architecture
 
@@ -287,24 +284,18 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO
+## Current immediate TODO (updated 2026-10-10)
 
-1. **Fix Android Kotlin compilation** (`weight` issue in `AppUi.kt` and `LogsUi.kt`).
-2. Build once; check workflow once only.
-3. Verify the global application log feature end-to-end:
-   - app startup lines
-   - import validation lines
-   - every ML Kit import pass
-   - raw recognized lines/boxes/confidences
-   - exception stack traces
-   - raw file export from the single Logs-page row
-4. Verify home status-card actions:
-   - Accessibility -> settings
-   - Equipment -> Equipment tab
-5. Install/test new APK against the same 8 screenshots.
-6. User should export and attach `dungeon-rush-app-log.jsonl`.
-7. Use that log to fix the remaining importer problems empirically instead of guessing from review screenshots.
-8. Once screenshot import is reliable, return to Auto live testing and tune ML Kit/parsing only where logs show actual failures.
+1. **Done:** Removed invalid Compose `weight` imports from `AppUi.kt` and `LogsUi.kt`.
+2. **CI unverified:** Pushes automatically trigger Android APK build. The single workflow-run lookup did not expose push-triggered runs; do not poll. Verify workflow success in GitHub Actions before installing.
+3. **Static code review done; device verification pending:** Application log has startup events, validation events, JSONL fsync, exported raw file, and exception stack traces. Importer now writes each individual ML Kit OCR pass immediately with image index, pass label, scale, raw line text, boxes and scores (commit `19b6660`). The existing `image_processed` event still includes merged spans and Python parser result. Validate the exported content on device.
+4. **Static code review done; device verification pending:** Accessibility inline button opens Android settings; Equipment inline button opens Equipment tab. STOP AUTO remains available if Accessibility disconnects or equipment becomes invalid (commit `f9ba1d2`).
+5. **Next user/device task:** Install the new successfully built APK and import the same 8 equipment screenshots, in any order.
+6. In Logs, export the **Application log** row as `dungeon-rush-app-log.jsonl` and attach it in ChatGPT.
+7. Use logged per-pass OCR output and parser results to fix the remaining Wings/Helmet/Weapon/Cape import failures empirically.
+8. Once screenshot import is reliable, resume Auto live tests and tune only based on measured failures.
+
+Do not claim the latest APK builds or works on-device until confirmed; no Android SDK/device was available to test in this chat.
 
 ## Useful game/reverse-engineering context
 
