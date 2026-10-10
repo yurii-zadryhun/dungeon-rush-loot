@@ -91,7 +91,8 @@ class AndroidLootController(
             delay(FRESH_VERIFY_DELAY_MS)
             if (!automation.isEnabled() || foreground.currentPackage() != config.targetPackage) return
 
-            val verified = observe(equipmentJson, strategy)
+            val fresh = observe(equipmentJson, strategy)
+            var verified = fresh
             try {
                 val rejection = FreshVerification.rejectionReason(first.event, verified.event)
                 if (rejection != null) {
