@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Mapping, Protocol
 
 from .config import MAX_ITEM_LEVEL, MAX_STATS, MIN_STATS, RARITY_TIERS, SKILLS
+from .affix_rules import has_exp_marker, validate_affixes
 from .domain import EquipmentSlot, ParsedItem, ParsedStat
 from .text import canonical_name
 
@@ -26,10 +27,6 @@ STANDARD_SLOTS = frozenset({
 
 
 def affix_bounds(slot: EquipmentSlot) -> tuple[int, int]:
-    if slot is EquipmentSlot.WINGS:
-        return 5, 5
-    if slot is EquipmentSlot.CAPE:
-        return 2, 5
     return MIN_STATS, MAX_STATS
 
 
@@ -56,6 +53,7 @@ def item_identity(item: ParsedItem) -> tuple:
     return (
         item.tier,
         item.level,
+        has_exp_marker(item.title),
         stats,
         intrinsic,
         round(item.primary_attack or 0.0, 2),
@@ -180,6 +178,12 @@ class EquipmentCodec:
                 f"Slot {slot.value!r} requires {expected} affixes; got {len(raw_stats)}."
             )
         stats = tuple(EquipmentCodec.parse_stat(slot, name, value) for name, value in raw_stats.items())
+        title = str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}")
+        # A missing title in a new payload cannot safely claim [EXP] status;
+        # older imports that dropped this tag must be re-imported.
+        affix_error = validate_affixes(title, stats, minimum=minimum, maximum=maximum)
+        if affix_error:
+            raise EquipmentStateError(f"Slot {slot.value!r}: {affix_error}")
 
         intrinsic_raw = raw_item.get("intrinsic_stats", {})
         if not isinstance(intrinsic_raw, dict):
@@ -203,7 +207,7 @@ class EquipmentCodec:
                 raise EquipmentStateError("Cape requires intrinsic Damage and Health values.")
 
         return ParsedItem(
-            title=str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}"),
+            title=title,
             rarity=rarity.title(),
             tier=RARITY_TIERS[rarity],
             level=level,
