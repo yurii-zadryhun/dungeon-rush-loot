@@ -1,6 +1,7 @@
 package com.yurii.dungeonrushloot.runtime
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -33,7 +34,8 @@ class MlKitOcrAdapter : OcrAdapter {
         frame: CapturedFrame,
         crop: RelativeRect,
         scale: Float = 1f,
-    ): List<OcrSpanDto> = recognizeInternal(frame, crop, scale, lines = true)
+        lightText: Boolean = false,
+    ): List<OcrSpanDto> = recognizeInternal(frame, crop, scale, lines = true, lightText = lightText)
 
     private suspend fun recognizeElements(
         frame: CapturedFrame,
@@ -45,6 +47,7 @@ class MlKitOcrAdapter : OcrAdapter {
         crop: RelativeRect,
         scale: Float,
         lines: Boolean,
+        lightText: Boolean = false,
     ): List<OcrSpanDto> {
         require(scale >= 1f)
 
@@ -66,8 +69,12 @@ class MlKitOcrAdapter : OcrAdapter {
             cropped
         }
 
+        // Light letters with dark outlines on a yellow item icon can disappear
+        // during normal OCR. The optional fallback isolates only bright glyphs
+        // as dark text on white, without ever transforming the numeric output.
+        val inputBitmap = if (lightText) isolateLightText(processed) else processed
         return try {
-            val result = recognizer.process(InputImage.fromBitmap(processed, 0)).await()
+            val result = recognizer.process(InputImage.fromBitmap(inputBitmap, 0)).await()
             if (lines) {
                 result.textBlocks.flatMap { block ->
                     block.lines.mapNotNull { line ->
@@ -92,9 +99,27 @@ class MlKitOcrAdapter : OcrAdapter {
                 }
             }
         } finally {
+            if (inputBitmap !== processed) inputBitmap.recycle()
             if (processed !== cropped) processed.recycle()
             cropped.recycle()
         }
+    }
+
+    private fun isolateLightText(source: Bitmap): Bitmap {
+        val pixels = IntArray(source.width * source.height)
+        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+        for (index in pixels.indices) {
+            val pixel = pixels[index]
+            val brightness = (
+                299 * Color.red(pixel) +
+                    587 * Color.green(pixel) +
+                    114 * Color.blue(pixel)
+                ) / 1000
+            pixels[index] = if (brightness >= LIGHT_TEXT_THRESHOLD) Color.BLACK else Color.WHITE
+        }
+        return Bitmap.createBitmap(
+            pixels, source.width, source.height, Bitmap.Config.ARGB_8888,
+        )
     }
 
     private fun Text.Line.toDto(
@@ -122,5 +147,9 @@ class MlKitOcrAdapter : OcrAdapter {
 
     override fun close() {
         recognizer.close()
+    }
+
+    companion object {
+        private const val LIGHT_TEXT_THRESHOLD = 215
     }
 }
