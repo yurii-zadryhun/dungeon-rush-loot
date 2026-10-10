@@ -17,6 +17,8 @@ interface ScreenCaptureAdapter {
 
 interface OcrAdapter : AutoCloseable {
     suspend fun recognize(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto>
+    suspend fun recognizeEnhanced(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto> =
+        recognize(frame, crop)
 }
 
 interface TouchAdapter {
