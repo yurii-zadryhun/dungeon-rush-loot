@@ -21,7 +21,10 @@ STAT_NUMBER_RE = re.compile(
 # Lv0124 and LvU 106 were observed on the Android device. Only the
 # zero-prefixed 3-digit form is accepted; ordinary Lv0 is not a level.
 LEVEL_MARKER_RE = re.compile(
-    r"\b(?:lvl|lvi|lvu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*\d{1,3}\b", re.I
+    # ML Kit's "LU1O6" and "LU 106" are narrow observed variants of Lvl 106.
+    # Repair O ONLY inside the explicit level token, never in affix numbers.
+    r"\b(?:lvl|lvi|lvu|lu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*(?P<level>\d{1,3}|\dO\d)\b",
+    re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
 # A bullet is recovered as a positive separator ONLY when an explicit level
@@ -201,10 +204,8 @@ class LootItemParser:
             ):
                 continue
             for match in matches:
-                number = re.search(r"(\d{1,3})\b", match.group())
-                if number is None:
-                    continue
-                level = self._normalize_ocr_level(int(number.group(1)))
+                number = match.group("level").upper().replace("O", "0")
+                level = self._normalize_ocr_level(int(number))
                 if level is not None:
                     levels.add(level)
         return next(iter(levels)) if len(levels) == 1 else None
