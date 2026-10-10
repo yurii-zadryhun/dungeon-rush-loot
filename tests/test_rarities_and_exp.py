@@ -3,14 +3,19 @@ from __future__ import annotations
 import json
 import unittest
 
-from src.affix_rules import has_exp_marker, unparsed_affix_lines, validate_affixes
-from src.android_bridge import evaluate_spans_json, validate_equipment_json
-from src.config import EXCEPTIONAL_SKILLS, MAX_STATS, MIN_STATS, RARITY_TIERS
+from src.affix_rules import (
+    affix_requirement, has_exp_marker, validate_affixes, unparsed_affix_lines,
+)
+from src.android_bridge import app_config_json, evaluate_spans_json, validate_equipment_json
+from src.config import (
+    EXCEPTIONAL_SKILLS, MAX_EXCEPTIONAL_AFFIXES, MAX_STATS,
+    MIN_EXCEPTIONAL_AFFIXES, MIN_STATS, RARITY_NORMAL_AFFIX_COUNT,
+    RARITY_TIERS,
+)
 from src.domain import Box, EquipmentSlot, OcrLine, ParsedStat
-from src.equipment import EquipmentCodec, EquipmentStateError
+from src.equipment import EquipmentCodec
 from src.equipment_import import EquipmentScreenshotParser
 from src.parsing import LootItemParser
-
 
 NORMAL = (
     ("health", 5.0),
@@ -19,203 +24,242 @@ NORMAL = (
     ("attack speed", 15.0),
     ("lifesteal", 4.0),
 )
-EXCEPTIONAL = ("mega crit chance", 8.0)
+EXCEPTIONAL = (
+    ("mega crit chance", 8.0),
+    ("triple hit chance", 22.0),
+)
 
 
-def skills(*rows: tuple[str, float]) -> dict[str, float]:
-    return dict(rows)
-
-
-def make_slot(slot: EquipmentSlot, rarity: str, count: int, exp: bool) -> dict:
-    source = [EXCEPTIONAL, *NORMAL] if exp else list(NORMAL)
-    chosen = source[:count]
-    title = f"{rarity.title()} {'[EXP] ' if exp else ''}{slot.value.title()}"
+def make_item(slot: EquipmentSlot, rarity: str, exp_count: int = 0) -> dict:
+    normal = RARITY_NORMAL_AFFIX_COUNT[rarity]
+    if slot is EquipmentSlot.WINGS and rarity == "divine" and exp_count == 0:
+        normal = 5  # Observed Divine Eternal Wings have five normal affixes.
     data = {
-        "title": title,
+        "title": f"{rarity.title()} {'[EXP] ' if exp_count else ''}{slot.value.title()}",
         "rarity": rarity.title(),
         "level": 9,
-        "stats": skills(*chosen),
+        "stats": dict((*NORMAL[:normal], *EXCEPTIONAL[:exp_count])),
     }
     if slot is EquipmentSlot.WINGS:
+        data["title"] = f"{'[EXP] ' if exp_count else ''}Eternal"
         data["primary"] = {"attack": 1000, "health": 5000}
-        data["title"] = f"{'[EXP] ' if exp else ''}Eternal"
-    if slot is EquipmentSlot.CAPE:
+    elif slot is EquipmentSlot.CAPE:
+        data["title"] = f"{'[EXP] ' if exp_count else ''}Divine Cloak"
         data["intrinsic_stats"] = {"damage": 80, "health": 80}
-        data["title"] = f"{'[EXP] ' if exp else ''}Divine Cloak"
+    elif slot is EquipmentSlot.RING:
+        data["title"] = f"{rarity.title()} {'[EXP] ' if exp_count else ''}Iron Ring"
     return data
 
 
-def loadout(rarity: str, count: int, exp: bool) -> dict:
-    return {slot.value: make_slot(slot, rarity, count, exp) for slot in EquipmentSlot}
+def loadout(rarity: str, exp_count: int = 0) -> dict:
+    return {slot.value: make_item(slot, rarity, exp_count) for slot in EquipmentSlot}
 
 
 def ocr_line(text: str, y: int) -> OcrLine:
     return OcrLine(text, 0.98, Box(100, y, 650, y + 28))
 
 
-def ocr_spans(texts: list[str]) -> str:
+def spans(texts: list[str]) -> str:
     return json.dumps([
         {
             "text": text,
             "score": 0.98,
             "box": {"left": 100, "top": i * 38, "right": 650, "bottom": i * 38 + 28},
-        }
-        for i, text in enumerate(texts)
+        } for i, text in enumerate(texts)
     ])
 
 
-class RarityAndExpTest(unittest.TestCase):
-    def test_full_game_rarity_catalog_supported(self):
+def popup(rarity: str, current_exp: int = 0, dropped_exp: int = 0) -> tuple[dict, list[str]]:
+    gear = loadout(rarity, current_exp)
+    gear["ring"] = make_item(EquipmentSlot.RING, rarity, current_exp)
+    other = make_item(EquipmentSlot.RING, rarity, dropped_exp)
+    other["title"] = f"{rarity.title()} {'[EXP] ' if dropped_exp else ''}Void Ring"
+    other["level"] = 12
+
+    def lines(item: dict) -> list[str]:
+        return [
+            item["rarity"],
+            item["title"].replace(item["rarity"], "", 1).strip(),
+            f"Lvl {item['level']}",
+            *(f"{value:+.2f}% {name.title()}" for name, value in item["stats"].items()),
+        ]
+
+    return gear, lines(gear["ring"]) + lines(other)
+
+
+class ExactRarityAffixRulesTest(unittest.TestCase):
+    def test_expected_rarity_table_and_global_bounds(self):
+        self.assertEqual((MIN_STATS, MAX_STATS), (1, 5))
+        self.assertEqual((MIN_EXCEPTIONAL_AFFIXES, MAX_EXCEPTIONAL_AFFIXES), (1, 2))
         self.assertEqual(
-            list(RARITY_TIERS),
-            ["common", "uncommon", "rare", "epic", "legendary",
-             "mythic", "artifact", "ancient", "immortal", "divine", "ultimate"],
+            RARITY_NORMAL_AFFIX_COUNT,
+            {
+                "common": 1, "uncommon": 1, "rare": 1, "epic": 1,
+                "legendary": 2, "mythic": 2, "artifact": 2, "ancient": 2,
+                "immortal": 3, "divine": 3,
+            },
         )
-        self.assertEqual((MIN_STATS, MAX_STATS), (2, 5))
+        self.assertIn("ultimate", RARITY_TIERS)
+        self.assertNotIn("ultimate", RARITY_NORMAL_AFFIX_COUNT)
 
-    def test_2_to_5_affixes_across_all_rarities_and_eight_slots(self):
-        for rarity in RARITY_TIERS:
-            for count in range(2, 6):
-                for exp in (False, True):
-                    with self.subTest(rarity=rarity, count=count, exp=exp):
-                        normalized = EquipmentCodec.loads_json(json.dumps(loadout(rarity, count, exp)))
-                        self.assertEqual(len(normalized.items), 8)
-                        for _, item in normalized:
-                            self.assertEqual(item.rarity.lower(), rarity)
-                            self.assertEqual(len(item.stats), count)
-                            self.assertEqual(has_exp_marker(item.title), exp)
-                        self.assertTrue(json.loads(validate_equipment_json(
-                            json.dumps(loadout(rarity, count, exp))
-                        ))["valid"])
+    def test_valid_complete_items_all_rarities_slots_and_exp_levels(self):
+        for rarity, ordinary in RARITY_NORMAL_AFFIX_COUNT.items():
+            for exp_count in (0, 1, 2):
+                for slot in EquipmentSlot:
+                    with self.subTest(rarity=rarity, exp=exp_count, slot=slot.value):
+                        item = make_item(slot, rarity, exp_count)
+                        requirement = affix_requirement(
+                            rarity, item["title"], slot=slot,
+                        )
+                        self.assertEqual(len(item["stats"]), requirement.normal + exp_count)
+                        self.assertEqual(requirement.exceptional_min <= exp_count <=
+                                         requirement.exceptional_max, True)
+                        state = loadout(rarity, exp_count)
+                        parsed = EquipmentCodec.loads_json(json.dumps(state))
+                        self.assertEqual(len(parsed.items), 8)
+                        self.assertTrue(json.loads(validate_equipment_json(json.dumps(state)))["valid"])
 
-    def test_exp_requires_exceptional_and_plain_forbids_exceptional(self):
-        for rarity in RARITY_TIERS:
-            for slot in EquipmentSlot:
-                for exp, rows in [
-                    (True, NORMAL[:2]),
-                    (False, (EXCEPTIONAL, NORMAL[0])),
-                ]:
-                    with self.subTest(rarity=rarity, slot=slot, exp=exp):
-                        item = make_slot(slot, rarity, 2, exp)
-                        item["stats"] = skills(*rows)
-                        payload = loadout(rarity, 2, False)
-                        payload[slot.value] = item
-                        validation = json.loads(validate_equipment_json(json.dumps(payload)))
-                        self.assertFalse(validation["valid"])
-                        self.assertIn("exceptional", validation["error"].lower())
+    def test_every_off_by_one_normal_count_fails_for_all_rarities(self):
+        for rarity, count in RARITY_NORMAL_AFFIX_COUNT.items():
+            for exp in (0, 1, 2):
+                for delta in (-1, 1):
+                    with self.subTest(rarity=rarity, exp=exp, delta=delta):
+                        item = make_item(EquipmentSlot.RING, rarity, exp)
+                        actual = count + delta
+                        if actual < 0:
+                            continue
+                        item["stats"] = dict((*NORMAL[:actual], *EXCEPTIONAL[:exp]))
+                        check = validate_equipment_json(json.dumps({
+                            **loadout(rarity, exp), "ring": item,
+                        }))
+                        result = json.loads(check)
+                        self.assertFalse(result["valid"])
+                        self.assertIn("normal affixes", result["error"])
 
-    def test_1_or_6_affixes_rejected_even_on_lower_rarity(self):
-        for count in (1, 6):
-            payload = loadout("uncommon", 2, False)
-            stats = skills(*NORMAL)
-            if count == 1:
-                stats = {"health": 5}
-            else:
-                stats["health regen"] = 3
-            payload["ring"]["stats"] = stats
-            check = json.loads(validate_equipment_json(json.dumps(payload)))
-            self.assertFalse(check["valid"])
-            self.assertIn("affixes", check["error"])
+    def test_exceptional_count_zero_one_two_three_and_marker(self):
+        for rarity, normal_count in RARITY_NORMAL_AFFIX_COUNT.items():
+            ordinary = NORMAL[:normal_count]
+            for marked in (False, True):
+                for exceptional_count in range(4):
+                    names = ("mega crit chance", "triple hit chance", "melee defense")
+                    exceptional = tuple((n, 5.0) for n in names[:exceptional_count])
+                    stats = tuple(ParsedStat(n, v, "", 1.0) for n, v in (*ordinary, *exceptional))
+                    title = f"{rarity.title()} {'[EXP] ' if marked else ''}Iron Ring"
+                    result = validate_affixes(title, stats, rarity=rarity)
+                    expected_ok = (1 <= exceptional_count <= 2) if marked else exceptional_count == 0
+                    with self.subTest(rarity=rarity, marked=marked, exceptional=exceptional_count):
+                        self.assertEqual(result is None, expected_ok, result)
 
-    def test_all_exceptional_skills_are_classified_as_exceptional(self):
-        for name in EXCEPTIONAL_SKILLS:
-            stats = (
-                ParsedStat(name, -10.0 if name == "critical damage taken" else 5.0, "", 1.0),
-                ParsedStat("health", 5.0, "", 1.0),
+    def test_all_exceptional_skills_are_classified_correctly(self):
+        for exceptional_name in EXCEPTIONAL_SKILLS:
+            stat = ParsedStat(
+                exceptional_name,
+                -10.0 if exceptional_name == "critical damage taken" else 5.0,
+                "",
+                1.0,
             )
-            self.assertIsNone(validate_affixes("[EXP] Sacred Gloves", stats))
-            self.assertIn("exceptional", validate_affixes("Sacred Gloves", stats).lower())
+            normal = ParsedStat("health", 5.0, "", 1.0)
+            self.assertIsNone(validate_affixes(
+                "Common [EXP] Iron Ring", (normal, stat), rarity="common",
+            ))
+            self.assertIn("exceptional", validate_affixes(
+                "Common Iron Ring", (normal, stat), rarity="common",
+            ))
 
-    def test_exp_marker_ocr_variants_and_false_positives(self):
-        for text in ("[EXP] Helmet", "[exp] Helmet", "(EXP] •11 Helmet", "EXP] 11 Helmet"):
-            self.assertTrue(has_exp_marker(text), text)
-        for text in ("EXPECTED Helmet", "EXPLOSIVE", "[ex]", "Helmet", "super_exp_item"):
-            self.assertFalse(has_exp_marker(text), text)
+    def test_ultimate_fails_closed_until_rule_is_confirmed(self):
+        for exp in (0, 1, 2):
+            raw = loadout("divine", exp)
+            raw["ring"]["rarity"] = "Ultimate"
+            raw["ring"]["title"] = f"Ultimate {'[EXP] ' if exp else ''}Iron Ring"
+            result = json.loads(validate_equipment_json(json.dumps(raw)))
+            self.assertFalse(result["valid"])
+            self.assertIn("No verified affix-count rule", result["error"])
 
-    def test_low_rarity_import_preserves_exp_flag_and_value(self):
+    def test_previous_real_divine_wings_with_five_normal_affixes_still_pass(self):
+        item = make_item(EquipmentSlot.WINGS, "divine", 0)
+        self.assertEqual(len(item["stats"]), 5)
+        parsed = EquipmentCodec.parse_item(EquipmentSlot.WINGS, item)
+        self.assertEqual(len(parsed.stats), 5)
+
+        item["stats"].pop("lifesteal")
+        with self.assertRaisesRegex(Exception, "normal affixes"):
+            EquipmentCodec.parse_item(EquipmentSlot.WINGS, item)
+
+    def test_exp_marker_recognition_with_real_ocr_variations(self):
+        for title in ("[EXP] Helmet", "[exp] Helmet", "(EXP] •11 Helmet", "EXP] 11 Helmet"):
+            self.assertTrue(has_exp_marker(title), title)
+        for title in ("EXPECTED Helmet", "EXPLOSIVE", "[ex]", "Helmet", "super_exp_item"):
+            self.assertFalse(has_exp_marker(title), title)
+
+    def test_low_rarity_one_affix_import_and_exp_with_two_or_three(self):
         fixtures = [
-            (
-                ["Rare", "[EXP] +2 Iron Ring", "Damage 10.0K", "Lvl 9",
-                 "+8.00% Mega Crit Chance", "+5.00% Health"],
-                True,
-            ),
-            (
-                ["Uncommon", "Iron Ring", "Damage 10.0K", "Lvl 9",
-                 "+6.00% Damage", "+5.00% Health"],
-                False,
-            ),
+            (["Common", "Iron Ring", "Damage 10K", "Lvl 9", "+5.00% Health"], 1, False),
+            (["Rare", "[EXP] +2 Iron Ring", "Damage 10K", "Lvl 9",
+              "+5.00% Health", "+8.00% Mega Crit Chance"], 2, True),
+            (["Epic", "[EXP] Iron Ring", "Damage 10K", "Lvl 9",
+              "+5.00% Health", "+8.00% Mega Crit Chance", "+20.00% Triple Hit Chance"], 3, True),
+            (["Legendary", "Iron Ring", "Damage 10K", "Lvl 9",
+              "+5.00% Health", "+6.00% Damage"], 2, False),
         ]
-        for lines, exp in fixtures:
-            with self.subTest(exp=exp):
-                result = EquipmentScreenshotParser().parse_lines(
-                    [ocr_line(text, i * 35) for i, text in enumerate(lines)]
+        for words, expected_count, exp in fixtures:
+            with self.subTest(rarity=words[0], count=expected_count, exp=exp):
+                parsed = EquipmentScreenshotParser().parse_lines(
+                    [ocr_line(text, index * 35) for index, text in enumerate(words)]
                 )
-                self.assertEqual(result.slot, EquipmentSlot.RING)
-                self.assertEqual(result.issues, ())
-                self.assertIsNotNone(result.item)
-                self.assertEqual(len(result.item.stats), 2)
-                self.assertEqual(has_exp_marker(result.item.title), exp)
+                self.assertEqual(parsed.slot, EquipmentSlot.RING)
+                self.assertEqual(parsed.issues, ())
+                self.assertEqual(len(parsed.item.stats), expected_count)
+                self.assertEqual(has_exp_marker(parsed.item.title), exp)
 
-    def test_live_popup_low_rarity_with_two_regular_affixes_is_actionable(self):
-        payload = loadout("rare", 2, False)
-        payload["ring"] = {
-            "title": "Rare Iron Ring", "rarity": "Rare", "level": 9,
-            "stats": {"health": 5.0, "damage": 6.0},
-        }
-        texts = [
-            "Rare", "Iron Ring", "Lvl 9", "+5.00% Health", "+6.00% Damage",
-            "Uncommon", "Void Ring", "Lvl 12", "+4.50% Health", "+6.10% Damage",
-        ]
-        result = json.loads(evaluate_spans_json(ocr_spans(texts), json.dumps(payload), "pvp"))
-        self.assertEqual(result["status"], "ok", result["message"])
-        self.assertEqual(result["slot"], "ring")
-        self.assertEqual(result["equipped"]["rarity"], "Rare")
-        self.assertEqual(result["candidate"]["rarity"], "Uncommon")
+    def test_rarity_count_detects_missing_affix_even_when_remaining_rows_valid(self):
+        for rarity in RARITY_NORMAL_AFFIX_COUNT:
+            for exp_count in (0, 1, 2):
+                item = make_item(EquipmentSlot.RING, rarity, exp_count)
+                raw = list(item["stats"].items())
+                for missing_index in range(len(raw)):
+                    with self.subTest(rarity=rarity, exp=exp_count, dropped=missing_index):
+                        truncated = tuple(
+                            ParsedStat(n, v, "", 1.0)
+                            for index, (n, v) in enumerate(raw) if index != missing_index
+                        )
+                        result = validate_affixes(
+                            item["title"], truncated, rarity=rarity,
+                            slot=EquipmentSlot.RING,
+                        )
+                        self.assertIsNotNone(result)
 
-    def test_live_popup_low_rarity_exp_with_two_affixes_is_actionable(self):
-        payload = loadout("rare", 2, False)
-        payload["ring"] = {
-            "title": "Rare [EXP] Iron Ring", "rarity": "Rare", "level": 9,
-            "stats": {"mega crit chance": 8.0, "health": 5.0},
-        }
-        texts = [
-            "Rare", "[EXP] Iron Ring", "Lvl 9",
-            "+8.00% Mega Crit Chance", "+5.00% Health",
-            "Uncommon", "[EXP] Void Ring", "Lvl 12",
-            "+8.20% Mega Crit Chance", "+6.10% Damage",
-        ]
-        result = json.loads(evaluate_spans_json(ocr_spans(texts), json.dumps(payload), "pvp"))
-        self.assertEqual(result["status"], "ok", result["message"])
-        self.assertEqual(result["slot"], "ring")
-        self.assertEqual(len(result["candidate"]["stats"]), 2)
-
-    def test_unparsed_third_stat_cannot_disappear_at_two_stat_minimum(self):
-        payload = loadout("rare", 2, False)
-        payload["ring"] = {
-            "title": "Rare Iron Ring", "rarity": "Rare", "level": 9,
-            "stats": {"health": 5.0, "damage": 6.0},
-        }
-        prefixes = [
-            "+1O.82% Critical Chance",  # letter O inside number
-            "+70.82% Critical Chance",  # invalid cap
-            "-8.20% Health",            # invalid sign
-            "+10.A2% Critical Chance",  # malformed decimal
-        ]
-        for malformed in prefixes:
-            with self.subTest(malformed=malformed):
-                texts = [
-                    "Rare", "Iron Ring", "Lvl 9",
-                    "+5.00% Health", "+6.00% Damage",
-                    "Rare", "Void Ring", "Lvl 12",
-                    "+4.50% Health", "+6.10% Damage", malformed,
-                ]
-                event = json.loads(evaluate_spans_json(
-                    ocr_spans(texts), json.dumps(payload), "pvp",
+    def test_live_auto_one_affix_common_and_three_plus_two_divine(self):
+        for rarity, first, second in (
+            ("common", 0, 0), ("rare", 0, 2),
+            ("legendary", 1, 2), ("immortal", 2, 0),
+            ("divine", 2, 2),
+        ):
+            with self.subTest(rarity=rarity, exp=(first, second)):
+                gear, lines = popup(rarity, first, second)
+                result = json.loads(evaluate_spans_json(
+                    spans(lines), json.dumps(gear), "pvp",
                 ))
-                self.assertEqual(event["status"], "check_ocr", event)
-                self.assertEqual(event["action"], "check")
+                self.assertEqual(result["status"], "ok", result["message"])
+                self.assertEqual(result["slot"], "ring")
+                self.assertEqual(len(result["equipped"]["stats"]),
+                                 RARITY_NORMAL_AFFIX_COUNT[rarity] + first)
+                self.assertEqual(len(result["candidate"]["stats"]),
+                                 RARITY_NORMAL_AFFIX_COUNT[rarity] + second)
 
-    def test_duplicate_stat_lines_cannot_be_deduplicated_to_valid_item(self):
+    def test_live_auto_dropped_last_line_produces_check_not_sell(self):
+        for rarity, first, second in (
+            ("common", 0, 0), ("legendary", 1, 1),
+            ("immortal", 2, 2), ("divine", 0, 2),
+        ):
+            gear, lines = popup(rarity, first, second)
+            full = json.loads(evaluate_spans_json(spans(lines), json.dumps(gear), "pvp"))
+            self.assertEqual(full["status"], "ok", full)
+            broken = lines[:-1]
+            result = json.loads(evaluate_spans_json(spans(broken), json.dumps(gear), "pvp"))
+            self.assertEqual(result["status"], "check_ocr")
+            self.assertEqual(result["action"], "check")
+
+    def test_parser_rejects_corrupted_extra_affixes_and_duplicates(self):
         stats = [
             ocr_line("+5.00% Health", 0),
             ocr_line("+6.00% Damage", 40),
@@ -223,42 +267,31 @@ class RarityAndExpTest(unittest.TestCase):
         ]
         parsed = LootItemParser()._stats(stats)
         self.assertEqual(len(parsed), 3)
-        self.assertIn("Duplicate", validate_affixes("Iron Ring", parsed))
+        self.assertIn("Duplicate", validate_affixes(
+            "Legendary Iron Ring", parsed, rarity="legendary",
+        ))
+        bad = unparsed_affix_lines(
+            ["+5.00% Health", "+6.00% Damage", "+1O.82% Critical Chance"],
+            parsed[:2],
+        )
+        self.assertEqual(bad, ("+1O.82% Critical Chance",))
 
-    def test_special_slot_import_preserves_exp_marker(self):
-        fixtures = [
-            (
-                EquipmentSlot.WINGS,
-                ["Divine", "[EXP] Eternal", "Lvl 100", "Damage 2.25M", "Health 7.50M",
-                 "+8.00% Mega Crit Chance", "+13.13% Ranged Damage"],
-            ),
-            (
-                EquipmentSlot.CAPE,
-                ["Divine Cloak", "[EXP]", "[Mythic]", "Lvl 31",
-                 "+80.00% Damage", "+80.00% Health",
-                 "+8.00% Mega Crit Chance", "+8.89% Critical Chance"],
-            ),
-        ]
-        for slot, raw in fixtures:
-            with self.subTest(slot=slot):
-                parsed = EquipmentScreenshotParser().parse_lines(
-                    [ocr_line(value, index * 35) for index, value in enumerate(raw)]
-                )
-                self.assertEqual(parsed.slot, slot)
-                self.assertEqual(parsed.issues, ())
-                self.assertTrue(has_exp_marker(parsed.item.title))
-                self.assertEqual(len(parsed.item.stats), 2)
+    def test_exp_validation_for_special_cape_and_wings(self):
+        cape = make_item(EquipmentSlot.CAPE, "mythic", 1)
+        parsed_cape = EquipmentCodec.parse_item(EquipmentSlot.CAPE, cape)
+        self.assertEqual(len(parsed_cape.stats), 3)
+        wings = make_item(EquipmentSlot.WINGS, "divine", 2)
+        parsed_wings = EquipmentCodec.parse_item(EquipmentSlot.WINGS, wings)
+        self.assertEqual(len(parsed_wings.stats), 5)
 
-    def test_import_rejects_exp_without_exceptional_and_plain_with_exceptional(self):
-        for title, affixes in [
-            ("[EXP] Iron Ring", ["+6.00% Damage", "+5.00% Health"]),
-            ("Iron Ring", ["+8.00% Mega Crit Chance", "+5.00% Health"]),
-        ]:
-            with self.subTest(title=title):
-                result = EquipmentScreenshotParser().parse_lines(
-                    [ocr_line(x, i * 35) for i, x in enumerate([
-                        "Rare", title, "Damage 10K", "Lvl 9", *affixes,
-                    ])]
-                )
-                self.assertTrue(result.issues)
-                self.assertTrue(any("exceptional" in issue.lower() for issue in result.issues))
+    def test_android_config_exposes_exact_same_rules_as_python(self):
+        config = json.loads(app_config_json())
+        self.assertEqual(config["schema"], 4)
+        self.assertEqual(config["affix_bounds"], {"min": 1, "max": 5})
+        self.assertEqual(config["rarity_normal_affixes"], RARITY_NORMAL_AFFIX_COUNT)
+        self.assertEqual(config["exp_exceptional_bounds"], {"min": 1, "max": 2})
+        self.assertEqual(config["divine_wings_normal_affixes"], 5)
+
+
+if __name__ == "__main__":
+    unittest.main()
