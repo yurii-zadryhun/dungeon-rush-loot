@@ -244,7 +244,7 @@ class AndroidBridgeTest(unittest.TestCase):
         spans = [_span(t, i * 38, i * 38 + 30) for i, t in enumerate(texts)]
         result = json.loads(evaluate_spans_json(json.dumps(spans), json.dumps(_equipment()), "universal"))
         self.assertEqual(result["status"], "check_ocr")
-        self.assertIn("out-of-range", result["message"].lower())
+        self.assertIn("unparsed", result["message"].lower())
 
     def test_missing_title_fails_closed_without_percentage_gap_guess(self):
         texts = [
