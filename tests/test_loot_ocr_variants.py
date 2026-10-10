@@ -251,7 +251,7 @@ class LootOcrVariantTest(unittest.TestCase):
 
     def test_percent_variations_per_every_affix_and_slot(self):
         for slot, (equipped, candidate) in CARDS.items():
-            for separator in ("%", " %", "l%", "I%", "l.", "°", ""):
+            for separator in ("%", " %", "l%", "I%", "l.", "°", "º", "o", "O", ""):
                 with self.subTest(slot=slot.value, separator=separator):
                     self.assert_cards(
                         popup_rows(equipped, candidate, separator=separator),
