@@ -21,6 +21,54 @@ Android branch: `android-live`
 
 Latest **verified production APK source commit**: `fade8fef74e47edef9e3af0feb71aef29efb5321`. Android workflow `38082125026` and Python CI workflow `38082125040` succeeded, and `android-live-latest` release's target_commitish matches exactly. All 92 shared Python tests passed on 3.11 and 3.12; Android JVM tests, Gradle build, signature and publication succeeded. Subsequent documentation-only commits may advance the branch SHA; verify source SHA of the APK separately.
 
+## Current immediate TODO — one-shot OCR screenshot ZIP (2026-10-10)
+
+The user confirmed the original 0.125/0.875 horizontal crop exactly matched
+the game popup in their source screenshot (709x1536). Earlier claims that
+visible background `Lvl 123` / `x4` pixels were inside the crop were wrong:
+those elements are outside the source crop. Source-frame vs ML Kit-input
+diagnostics are needed; do **not** blindly tighten the crop or remove more
+text in the parser.
+
+**Implemented in android-live:**
+- `runtime/OcrDebugCapture.kt`: ephemeral, one-shot state machine
+  Idle→Armed→Capturing→Saved/Failed, cancel/retry; no persistent screenshots.
+- `runtime/AndroidLootController.kt` checks debug capture **before** normal
+  Auto and independently of Auto enabled, only when the target game is in
+  foreground. This code never reaches the touch path. Captures one frame and
+  runs regular 2.5× ML Kit OCR and optional Python evaluation; logs result.
+- `runtime/MlKitOcrAdapter.kt` captures `ocr-crop.png` and `ocr-input.png`
+  from the **actual bitmaps** passed to OCR, not reconstructed/simulated input.
+  Shared `OcrCropPixels.kt` calculates tested integer boundaries.
+- `data/OcrDebugExporter.kt` bundles `screen.png` (Accessibility full
+  bitmap), `ocr-crop.png` (source crop), `ocr-input.png` (exact scaled input),
+  `ocr.json` (source dimensions, pixel+relative crop, OCR lines and parser
+  decision/errors). Uses MediaStore Downloads ZIP via extended
+  `DownloadsLogExporter.kt` with IS_PENDING and rollback.
+- Auto tab has **Capture next game OCR as ZIP** (requires Accessibility
+  connected and Auto STOPPED), shows status/file name and Cancel.
+  Instructions: leave the loot popup open in the game, arm from this app, then
+  return to Dungeon Rush. One-shot ZIP is saved automatically in Downloads,
+  without a picker; user then shares ZIP. Warn about visible identifying
+  information in the full screenshot.
+- `runtime/OcrDebugCaptureTest.kt`: JUnit tests for one-shot semantics,
+  cancellation, crop pixel rounding on 709×1536 and 1080×2340, valid/invalid
+  crops and ZIP entry integrity. Existing Python crop-geometry test also
+  covers original relative offsets.
+
+**Verification pending as of this handoff update:** latest Android release
+must pass all Python and Android JVM tests and Gradle release signing, and
+`android-live-latest` must reference the latest production SHA. Do not
+give the user an earlier rolling APK as if it includes diagnostics. Test on
+device by exporting the ZIP of an actual two-item popup. Note that this
+capture is triggered on the first game-foreground frame, so user must ensure
+the popup is already open before returning to the game.
+
+**Deferred:** no modifications to tier/level scoring, Ultimate rules,
+or integration with `dungeon-rush-simulator`.
+
+---
+
 ## High-level architecture
 
 One Python decision domain, two platform shells:
