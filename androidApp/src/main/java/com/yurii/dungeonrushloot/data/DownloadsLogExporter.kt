@@ -14,26 +14,15 @@ import java.io.OutputStream
  * never exposed if the write fails.
  */
 class DownloadsLogExporter(private val context: Context) {
-    fun save(fileName: String, write: (OutputStream) -> Unit): String =
-        saveWithType(fileName, "jsonl", "application/x-ndjson", write)
-
-    fun saveZip(fileName: String, write: (OutputStream) -> Unit): String =
-        saveWithType(fileName, "zip", "application/zip", write)
-
-    private fun saveWithType(
-        fileName: String,
-        extension: String,
-        mimeType: String,
-        write: (OutputStream) -> Unit,
-    ): String {
-        require(fileName.matches(Regex("""[A-Za-z0-9._-]+[.]""" + extension))) {
+    fun save(fileName: String, write: (OutputStream) -> Unit): String {
+        require(fileName.matches(Regex("""[A-Za-z0-9._-]+[.]jsonl"""))) {
             "Invalid Downloads export filename."
         }
 
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/x-ndjson")
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
                 Environment.DIRECTORY_DOWNLOADS + "/",
