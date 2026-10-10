@@ -10,6 +10,7 @@ from .config import MAX_ITEM_LEVEL, MAX_STATS, MIN_STATS, RARITY_TIERS, SKILLS
 from .affix_rules import has_exp_marker, validate_affixes
 from .domain import EquipmentSlot, ParsedItem, ParsedStat
 from .text import canonical_name
+from .game_catalog import match_standard_item
 
 
 class EquipmentStateError(RuntimeError):
@@ -92,9 +93,15 @@ class EquipmentLoadout:
                 "Update the initial equipment state before running the watcher."
             )
         if len(matches) > 1:
+            # Low-rarity gear with 2 common affixes often has identical numeric
+            # identities in several slots. The known APK item-name catalog
+            # supplies the slot, but only if its numeric identity also matches.
+            catalog_match = match_standard_item([item.title])
+            if catalog_match is not None and catalog_match.slot in matches:
+                return catalog_match.slot
             raise EquipmentStateError(
-                "The OCR-equipped item matches more than one configured slot; "
-                "make the equipment state unambiguous."
+                "The OCR-equipped item matches more than one configured slot "
+                "and the catalog could not disambiguate it."
             )
         return matches[0]
 
