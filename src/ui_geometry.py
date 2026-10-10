@@ -52,3 +52,10 @@ LOOT_UI = LootUiProfile(
 # excludes the aggregate build stats visible underneath it. Later this can be
 # replaced by popup detection without changing import/parsing logic.
 EQUIPMENT_IMPORT_CROP = RelativeRect(0.075, 0.425, 0.925, 0.705)
+
+
+# The item level is rendered inside/under the icon with a heavy outline and is
+# the least reliable text for ML Kit. A second, aggressively upscaled OCR pass
+# is limited to this static level area. Because the crop is so tight, the shared
+# parser can safely recover a lone number even if ML Kit misses the "Lvl" glyphs.
+EQUIPMENT_IMPORT_LEVEL_CROP = RelativeRect(0.10, 0.485, 0.34, 0.595)
