@@ -33,7 +33,9 @@ data class RarityDefinition(
 data class AppConfig(
     val targetPackage: String,
     val crop: RelativeRect,
+    val equipmentImportCrop: RelativeRect,
     val targets: Map<String, RelativeRect>,
+    val slots: List<String>,
     val rarities: List<RarityDefinition>,
     val skills: List<SkillDefinition>,
 ) {
@@ -54,10 +56,13 @@ data class AppConfig(
                     it.getString("category"),
                 )
             }
+            val slots = json.getJSONArray("slots").toStringList()
             return AppConfig(
                 targetPackage = json.getString("target_package"),
                 crop = RelativeRect.fromJson(json.getJSONObject("crop")),
+                equipmentImportCrop = RelativeRect.fromJson(json.getJSONObject("equipment_import_crop")),
                 targets = targets,
+                slots = slots,
                 rarities = rarities,
                 skills = skills,
             )
@@ -70,6 +75,9 @@ data class EquipmentDraft(
     val rarity: String,
     val level: Int,
     val stats: LinkedHashMap<String, Double>,
+    val primaryAttack: Double? = null,
+    val primaryHealth: Double? = null,
+    val intrinsicStats: LinkedHashMap<String, Double> = linkedMapOf(),
 )
 
 data class EquipmentValidation(
@@ -77,6 +85,39 @@ data class EquipmentValidation(
     val normalizedJson: String?,
     val error: String?,
 )
+
+data class EquipmentImportResult(
+    val status: String,
+    var slot: String?,
+    val slotConfidence: Double,
+    val itemJson: String?,
+    val title: String?,
+    val rarity: String?,
+    val level: Int?,
+    val issues: List<String>,
+    val rawLines: List<String>,
+) {
+    val isParsed: Boolean
+        get() = itemJson != null
+
+    companion object {
+        fun fromJson(raw: String): EquipmentImportResult {
+            val json = JSONObject(raw)
+            val item = json.optJSONObject("item")
+            return EquipmentImportResult(
+                status = json.optString("status"),
+                slot = json.optString("slot").takeIf { it.isNotBlank() && it != "null" },
+                slotConfidence = json.optDouble("slot_confidence", 0.0),
+                itemJson = item?.toString(),
+                title = item?.optString("title"),
+                rarity = item?.optString("rarity"),
+                level = item?.optInt("level"),
+                issues = json.optJSONArray("issues")?.toStringList().orEmpty(),
+                rawLines = json.optJSONArray("raw_lines")?.toStringList().orEmpty(),
+            )
+        }
+    }
+}
 
 data class OcrSpanDto(
     val text: String,
@@ -179,5 +220,17 @@ data class DecisionLogEntry(
     }
 }
 
+data class LogSession(
+    val id: String,
+    val startedAt: String,
+    val endedAt: String?,
+    val strategy: String?,
+    val eventCount: Int,
+    val active: Boolean,
+)
+
 internal fun <T> JSONArray.toObjectList(transform: (JSONObject) -> T): List<T> =
     List(length()) { index -> transform(getJSONObject(index)) }
+
+internal fun JSONArray.toStringList(): List<String> =
+    List(length()) { index -> getString(index) }
