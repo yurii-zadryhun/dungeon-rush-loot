@@ -34,7 +34,10 @@ def affix_bounds(slot: EquipmentSlot) -> tuple[int, int]:
 
 
 def beneficial_value(name: str, value: float) -> float:
-    return abs(value) if canonical_name(name) == "critical damage taken" else max(0.0, value)
+    # Both are beneficial reductions displayed as negative percentages.
+    return abs(value) if canonical_name(name) in {
+        "critical damage taken", "companion cooldown"
+    } else max(0.0, value)
 
 
 def item_identity(item: ParsedItem) -> tuple:
