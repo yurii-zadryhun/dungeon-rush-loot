@@ -284,41 +284,37 @@ AccessibilityService may remain enabled/connected after Stop, but automation sho
 
 A process restart must not silently resume auto-tapping. User must explicitly Start again.
 
-## Current immediate TODO (updated 2026-10-10: Logs browser + OCR parser hardening)
+## Current immediate TODO — verified 2026-10-10
 
-### User request now being addressed
+### Completed in android-live
 
-1. Logs tab must be a **file browser**. First item: Application log. Below that: Session logs, each represented by its own JSONL file. Tapping a row opens a separate log detail page. Export exists **only inside the detail**.
-2. Export is **one tap into public Downloads**, using the original JSONL filename; NO Android CreateDocument picker / folder / filename confirmation. The application-level log must persist across launches and receive new startup entries.
-3. Write broad, high-quality regression tests of live loot OCR variability: rarity labels on separate rows, wrapped item titles, level anywhere (including inserted into affix lines), imperfect percentage glyphs, textual OCR substitutions, and fail-closed rules for ambiguous or corrupt numbers. Cover the six standard loot slots, not only the Helmet screenshot.
+**Requested Logs UX:** Browse screen has Application log file first, Session logs below; tapping opens separate Application/Session log detail with paginated events and detail-only Export, saving JSONL directly to Downloads via MediaStore without the Android file-picker. Application log persists and receives app launch events.
 
-### Implementation pushed on android-live
+**OCR improvements:** Shared parser tolerates levels before/after/in affix lines, fuzzy skill names, bounded percentage separator glyph confusion and wrapped titles; numerical digits are never fuzzy-repaired. Auto uses 2.5× line OCR with 3.5× fallback, raw `auto_ocr.observation` diagnostics and CHECK/no tap on unclear results. No blind Sell confirmation.
 
-- `9d44aaf`: Global application JSONL supports newest-first paginated read.
-- `0a76c32`: Session files support exact raw JSONL export and size metadata; session logs remain separate.
-- `6c75937`, `0e5a1f2`, `a405a76`: Android `DownloadsLogExporter` saves direct to Downloads via MediaStore Downloads / pending entry, validates filename, publishes or deletes on error; no storage permission or picker on minSdk 30.
-- `8d48203`: Logs UI now file browser + separate application/session detail screens. Back button and system BackHandler. Expandable app JSON cards, same session decision cards, 50-entry incremental paging, detail-only Export with asynchronous I/O and toast.
-- Global `ApplicationLogStore` already writes `log_opened` on process initialization and `MainActivity` writes `activity_created` each launch. No redundant background startup log process.
-- `29d2521`: Shared `LootItemParser` now parses signed decimal values and textual names separately; tolerates % glyph variants (`l%`, `I%`, `l.`, `°`) and a missing percent only with explicit sign, known name, valid numeric cap and sign. It **never fuzzy repairs digits**. Removes `Lvl` tokens from affix text wherever positioned, combines wrapped labels, rejects ambiguous/conflicting levels and malformed numeric rows.
-- `5f91ae5`, `944daa0`, `8cd9de1`: Loot card splitter recognizes two-line catalog titles (e.g. `[EXP] Crimson` + `Backpack`), keeps rarity headings, does not mistake an affix or category label for a title; uses the canonical extracted item catalog and skips non-title rows before expensive fuzzy matching.
-- `74c0266`, `587dc28`: Cape fixed Damage/Health intrinsic values are explicitly allowed in the item screenshot importer, then independently checked against Cape progression; live loot affix caps remain strict.
-- `6048ee9`: `tests/test_loot_ocr_variants.py` covers six standard slots and dozens of variants per slot: five title/rarity layouts, six level positions, five level-prefix formats, ten percentage glyph variations, known OCR textual typos/comma decimals, cross-line affix labels, grouped OCR elements with y-coordinate jitter, bridge/scoring integration, and fail-closed invalid values/missing fields/duplicates/contradictory levels.
-- `9991f7c`: Test code cleanup.
-- `694b514`: historical Melee tests now require CHECK rather than unsafe unconditional SELL with no validated loadout.
-- `b1aecd3`: missing-percent numeric affixes are never treated as title fragments.
-- `3850048`, `7ef4fb8`: bounded glyph variants include OCR `o` / `O` / `º` after signed decimals, with 10 variants exercised in matrix.
-- Prior Auto fixes remain: 2.5×/3.5× line OCR; raw auto diagnostics in global application log; safe item/slot validation; fresh verification; disabled blind Sell confirmation.
+**Alt accounts / rarity / exceptional semantics:**
+- `src/config.py` defines `MIN_STATS=2`, `MAX_STATS=5`. All eight slots support 2–5 rolled affixes (Cape intrinsic Damage/Health aren't counted). All 11 rarities Common–Ultimate are recognized.
+- `src/affix_rules.py` is the shared rule: `[EXP]` means **at least one** exceptional rolled skill. Other rolled stats may be normal; no `[EXP]` means **zero** exceptional rolled skills. Normal range/sign/duplicates are checked in live Auto, equipment loadout deserialization, and screenshot import. Unparsed candidate-affix rows result in CHECK even if 2 valid rolls remain.
+- Import keeps the actual `[EXP]` marker in stored names **for all eight slots**, including Wings/Cape, whereas prior versions stripped the tag. OLD persisted gear with exceptional rolls may now be rejected; users must **re-import the screenshots** after updating. Never fabricate the marker from roll types.
+- `EquipmentLoadout.slot_of` uses the game catalog to disambiguate if two low-rarity items in different slots have identical level/rarity/affixes, while still requiring numeric identity match.
+- Android `EquipmentUi.kt` now uses canonical affix bounds from Python `app_config_json()` schema 3, with exceptional flags on skills for editor filtering, instant title validation and 2–5 row counts. Kotlin does not independently redefine the affix categories.
+- `tests/test_rarities_and_exp.py` covers all rarities × all slots × 2–5 × EXP/non-EXP, invalid combinations, missing OCR affixes, duplicate stats, same-identity slot disambiguation, low-rarity live Auto and special Wings/Cape marker import. Existing `tests/test_loot_ocr_variants.py` also covers hundreds of OCR formatting variants.
+- `tests/test_core.py`, `test_android_bridge.py`, `test_build_scoring.py`, `test_equipment_import.py` were updated to preserve the stricter semantics.
 
-### Verification status and next steps
+### Verification (GitHub Actions)
 
-- The prior APK equipment import achieved **8/8 success on device**. The user's screenshot shows Auto CHECK errors, but the uploaded application log did not yet contain Auto OCR observations on the older APK.
-- **New code and tests are not yet validated by CI or device**. The GitHub CI workflow was reported **in_progress** for commit `9991f7c` when checked once. Per working agreement, do NOT poll GitHub Actions. Check its final result in the normal UI; report `CI pending` until confirmed.
-- Important: No direct local checkout/Android SDK was available in this chat, so the tests were added but not executed locally. Do not claim tests pass.
-- Next: ensure shared Python CI and Android APK build pass. Install latest signed APK only after build success.
-- Verify Logs browser opens the right source; Export saves both Application and selected Session raw files to Downloads without picker; startup adds new application events after process restart.
-- Replay 8 equipment import images and the **live popup** from the earlier screenshot; Auto should CHECK/no tap on unsafe reads and decide only when all structured fields match.
-- Export Application log detail after live testing. Inspect `auto_ocr.observation` to distinguish ML Kit OCR failures from parser failures.
-- If CI fails, fix exactly the reported failures. If parser remains unable to safely interpret actual OCR text, add cases from raw diagnostic events rather than editing numbers by guesswork.
+- **CI green:** 76 Python tests passed on commit `55cab28e2b9da2f49c8c8392cda93335bdb8e53`, including the new rarity/EXP matrix.
+- **Android APK green:** run `38077405044` successfully completed `Build signed release APK`, `Verify signature` and `Publish rolling prerelease`. APK release source commit: `55cab28e2b9da2f49c8c8392cda93335bdb8e53`.
+- Rolling release: https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/tag/android-live-latest
+- The documentation commits after that verified release do not alter Android/Python production code. The APK **has not yet been device-tested** in this iteration.
+
+### Remaining user/device checks
+
+1. Install the latest APK. **Re-import all eight current equipment screenshots** to reconstruct original `[EXP]` marker and new schema; old imports stripped it.
+2. Validate both Logs navigation and one-click Downloads export for Application log and a chosen Session log (without picker).
+3. Verify a non-[EXP] 2-affix item and an [EXP] 2-affix item on an alt account with real screenshots.
+4. Start Auto under supervision. Export the new Application log detail after any CHECK; use raw `auto_ocr.observation` to diagnose actual OCR errors instead of guessing.
+5. Only after adequate live samples, refine OCR and deterministic UI-change confirmation as necessary; fail closed and prevent unintended taps.
 
 ## Useful game/reverse-engineering context
 
