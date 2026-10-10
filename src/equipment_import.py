@@ -6,8 +6,19 @@ from typing import Sequence
 
 from .config import MAX_ITEM_LEVEL, RARITY_TIERS
 from .domain import EquipmentSlot, OcrLine, OcrSpan, ParsedItem, ParsedStat
+from .game_catalog import (
+    CatalogMatch,
+    cape_affix_count,
+    cape_intrinsic_value,
+    expected_wing_primaries,
+    infer_cape_level,
+    infer_wing_level,
+    match_cape_name,
+    match_standard_item,
+    match_wing_name,
+)
 from .parsing import LootItemParser, OcrLineAssembler
-from .text import LEVEL_RE, PERCENT_RE, canonical_name, is_melee_title, normalize_text
+from .text import LEVEL_RE, canonical_name, is_melee_title, normalize_text
 
 ABSOLUTE_PRIMARY_RE = re.compile(
     r"^\s*(damage|health)\s+([0-9]+(?:[.,][0-9]+)?)\s*([kmbtq]?)\b",
@@ -22,20 +33,6 @@ RARITY_WORD_RE = re.compile(
     re.I,
 )
 
-STANDARD_SLOT_PATTERNS: tuple[tuple[EquipmentSlot, re.Pattern[str]], ...] = (
-    (EquipmentSlot.HELMET, re.compile(r"\b(?:helmet|hood)\b", re.I)),
-    (EquipmentSlot.BACKPACK, re.compile(r"\b(?:backpack|armor|armour|chest)\b", re.I)),
-    (EquipmentSlot.GLOVES, re.compile(r"\bgloves?\b", re.I)),
-    (EquipmentSlot.NECKLACE, re.compile(r"\bnecklace\b", re.I)),
-    (EquipmentSlot.RING, re.compile(r"\bring\b", re.I)),
-    (
-        EquipmentSlot.WEAPON,
-        re.compile(r"\[(?:range|ranged|melee)\]|\b(?:crossbow|bow|mace|sword|staff|wand)\b", re.I),
-    ),
-)
-
-IGNORED_IMPORT_LINES = {"x", "lock", "reroll", "reroll substats"}
-
 
 @dataclass(frozen=True)
 class EquipmentImportResult:
@@ -47,38 +44,75 @@ class EquipmentImportResult:
 
 
 class EquipmentScreenshotParser:
+    """Shared parser for static current-equipment screenshots.
+
+    Android is responsible only for image selection/cropping/OCR. Slot
+    classification, title cleanup, special-item semantics and validation stay in
+    Python so the same importer can later be driven by Paddle or another capture
+    adapter on desktop.
+    """
+
     def __init__(self) -> None:
         self.assembler = OcrLineAssembler()
         self.item_parser = LootItemParser()
 
-    def parse_spans(self, spans: Sequence[OcrSpan]) -> EquipmentImportResult:
-        return self.parse_lines(self.assembler.assemble(spans))
+    def parse_spans(
+        self,
+        spans: Sequence[OcrSpan],
+        level_spans: Sequence[OcrSpan] = (),
+    ) -> EquipmentImportResult:
+        return self.parse_lines(
+            self.assembler.assemble(spans),
+            self.assembler.assemble(level_spans),
+        )
 
-    def parse_lines(self, lines: Sequence[OcrLine]) -> EquipmentImportResult:
+    def parse_lines(
+        self,
+        lines: Sequence[OcrLine],
+        level_lines: Sequence[OcrLine] = (),
+    ) -> EquipmentImportResult:
         lines = tuple(line for line in lines if normalize_text(line.text).strip())
         texts = [normalize_text(line.text).strip() for line in lines]
+        level_texts = [normalize_text(line.text).strip() for line in level_lines]
+
         primary = self._absolute_primaries(texts)
-        slot, confidence, slot_reason = self._slot(texts, primary)
+        primary_kind = next(iter(primary)) if len(primary) == 1 else None
+        bracket_rarity = any(BRACKET_RARITY_RE.search(text) for text in texts)
+
+        cape_match = match_cape_name(texts)
+        wing_match = match_wing_name(texts)
+        standard_match = match_standard_item(texts, primary_kind)
+
+        slot: EquipmentSlot | None
+        slot_confidence: float
+        title: str
+        if bracket_rarity and cape_match is not None:
+            slot = EquipmentSlot.CAPE
+            title, slot_confidence = cape_match
+        elif {"damage", "health"}.issubset(primary) and wing_match is not None:
+            slot = EquipmentSlot.WINGS
+            title, slot_confidence = wing_match
+        elif standard_match is not None:
+            slot = standard_match.slot
+            slot_confidence = standard_match.confidence
+            title = standard_match.name
+        else:
+            slot = None
+            slot_confidence = 0.0
+            title = ""
+
         issues: list[str] = []
         if slot is None:
-            issues.append("Could not identify equipment slot safely.")
+            issues.append("Could not identify equipment slot safely from the game catalog.")
 
         rarity = self._rarity(texts, slot)
+        tier = RARITY_TIERS[rarity.lower()] if rarity else None
         if rarity is None:
             issues.append("Could not parse rarity.")
-            tier = None
-        else:
-            tier = RARITY_TIERS[rarity.lower()]
-
-        level = self._level(texts)
-        if level is None:
-            issues.append("Could not parse level.")
-
-        title = self._title(texts, slot)
-        if not title:
-            issues.append("Could not parse item title.")
 
         parsed_stats = tuple(self.item_parser._stats(lines))
+        level = self._level(texts, level_texts)
+
         intrinsic: tuple[ParsedStat, ...] = ()
         affixes = parsed_stats
         primary_attack = None
@@ -87,23 +121,51 @@ class EquipmentScreenshotParser:
         if slot is EquipmentSlot.WINGS:
             primary_attack = primary.get("damage")
             primary_health = primary.get("health")
-            if not primary_attack or not primary_health:
+
+            if level is None and tier is not None:
+                level = infer_wing_level(tier, primary_attack, primary_health)
+
+            if level is not None and tier is not None:
+                expected_attack, expected_health = expected_wing_primaries(tier, level)
+                if primary_attack is None and primary_health is not None:
+                    primary_attack = expected_attack
+                if primary_health is None and primary_attack is not None:
+                    primary_health = expected_health
+
+            if primary_attack is None or primary_health is None:
                 issues.append("Wings require both absolute Damage and Health primary values.")
             if len(affixes) != 5:
                 issues.append(f"Wings expected 5 affixes; parsed {len(affixes)}.")
+
         elif slot is EquipmentSlot.CAPE:
-            intrinsic, affixes = self._split_cape_stats(parsed_stats)
+            observed_intrinsic = self._first_cape_intrinsic_value(parsed_stats)
+            if level is None and title:
+                level = infer_cape_level(title, observed_intrinsic)
+            intrinsic, affixes = self._split_cape_stats(parsed_stats, title, level)
             intrinsic_names = {canonical_name(stat.name) for stat in intrinsic}
             if intrinsic_names != {"damage", "health"}:
                 issues.append("Cape primary Damage/Health lines were not parsed safely.")
-            if not 2 <= len(affixes) <= 5:
-                issues.append(f"Cape expected at least 2 affixes; parsed {len(affixes)}.")
+
+            expected_affixes = cape_affix_count(title) if title else None
+            if expected_affixes is not None:
+                if len(affixes) != expected_affixes:
+                    issues.append(
+                        f"Cape expected {expected_affixes} affixes; parsed {len(affixes)}."
+                    )
+            elif not 1 <= len(affixes) <= 5:
+                issues.append(f"Cape affix count looks invalid: {len(affixes)}.")
+
         elif slot is not None and not 4 <= len(affixes) <= 5:
             issues.append(f"Standard equipment expected 4-5 affixes; parsed {len(affixes)}.")
 
+        if level is None:
+            issues.append("Could not parse level.")
+        if not title:
+            issues.append("Could not parse item title.")
+
         item = None
         if rarity is not None and level is not None and title:
-            confidences = [line.score for line in lines]
+            confidences = [line.score for line in (*lines, *level_lines) if line.text.strip()]
             item = ParsedItem(
                 title=title,
                 rarity=rarity.title(),
@@ -112,36 +174,19 @@ class EquipmentScreenshotParser:
                 stats=affixes,
                 raw_lines=tuple(texts),
                 average_ocr_confidence=sum(confidences) / len(confidences) if confidences else 0.0,
-                melee=is_melee_title(title),
+                melee=is_melee_title(" ".join(texts)),
                 primary_attack=primary_attack,
                 primary_health=primary_health,
                 intrinsic_stats=intrinsic,
             )
 
-        if slot_reason and confidence < 0.9:
-            issues.append(f"slot: {slot_reason}")
-
-        return EquipmentImportResult(slot, confidence, item, tuple(issues), lines)
-
-    @staticmethod
-    def _slot(texts: Sequence[str], primary: dict[str, float]) -> tuple[EquipmentSlot | None, float, str]:
-        combined = " ".join(texts)
-        bracket_rarity = any(BRACKET_RARITY_RE.search(text) for text in texts)
-        cape_name = bool(re.search(r"\b(?:cloak|cape)\b", combined, re.I))
-        if bracket_rarity and cape_name:
-            return EquipmentSlot.CAPE, 1.0, "bracketed rarity + cloak/cape title"
-
-        standard_matches = [slot for slot, pattern in STANDARD_SLOT_PATTERNS if pattern.search(combined)]
-        has_both_primaries = {"damage", "health"}.issubset(primary)
-        if has_both_primaries and not standard_matches:
-            return EquipmentSlot.WINGS, 0.99, "both absolute Damage + Health primaries"
-
-        unique = set(standard_matches)
-        if len(unique) == 1:
-            return next(iter(unique)), 0.99, "slot keyword in title"
-        if len(unique) > 1:
-            return None, 0.0, "multiple standard slot signatures"
-        return None, 0.0, "no unique slot signature"
+        return EquipmentImportResult(
+            slot=slot,
+            slot_confidence=slot_confidence,
+            item=item,
+            issues=tuple(dict.fromkeys(issues)),
+            lines=lines,
+        )
 
     @staticmethod
     def _rarity(texts: Sequence[str], slot: EquipmentSlot | None) -> str | None:
@@ -157,19 +202,34 @@ class EquipmentScreenshotParser:
         return None
 
     @staticmethod
-    def _level(texts: Sequence[str]) -> int | None:
-        for text in texts:
+    def _level(texts: Sequence[str], level_texts: Sequence[str]) -> int | None:
+        for text in (*texts, *level_texts):
             search_text = text[:text.find("%")] if "%" in text else text
             match = LEVEL_RE.search(search_text)
             if not match:
                 continue
-            value = int(match.group(1))
-            if 1 <= value <= MAX_ITEM_LEVEL:
-                return value
-            if 131 <= value <= 199:
-                corrected = value - 100
-                if 1 <= corrected <= MAX_ITEM_LEVEL:
-                    return corrected
+            normalized = EquipmentScreenshotParser._normalize_level(int(match.group(1)))
+            if normalized is not None:
+                return normalized
+
+        # The dedicated level crop contains only the item icon/footer. ML Kit
+        # occasionally recognizes the outlined "Lvl" poorly but still reads the
+        # digits. In that tightly scoped crop a single valid integer is safe.
+        values: set[int] = set()
+        for text in level_texts:
+            for raw in re.findall(r"\d{1,3}", text):
+                normalized = EquipmentScreenshotParser._normalize_level(int(raw))
+                if normalized is not None:
+                    values.add(normalized)
+        return next(iter(values)) if len(values) == 1 else None
+
+    @staticmethod
+    def _normalize_level(value: int) -> int | None:
+        if 1 <= value <= MAX_ITEM_LEVEL:
+            return value
+        if 131 <= value <= 199:
+            corrected = value - 100
+            return corrected if 1 <= corrected <= MAX_ITEM_LEVEL else None
         return None
 
     @staticmethod
@@ -200,42 +260,57 @@ class EquipmentScreenshotParser:
         return value * multipliers[suffix.lower()]
 
     @staticmethod
-    def _title(texts: Sequence[str], slot: EquipmentSlot | None) -> str:
-        if slot is EquipmentSlot.CAPE:
-            title = next((text for text in texts if re.search(r"\b(?:cloak|cape)\b", text, re.I)), "")
-            return BRACKET_RARITY_RE.sub("", title).strip(" -")
-
-        if slot is EquipmentSlot.WINGS:
-            candidates = []
-            for text in texts:
-                lower = text.lower().strip()
-                if lower in IGNORED_IMPORT_LINES:
-                    continue
-                if RARITY_WORD_RE.fullmatch(text) or BRACKET_RARITY_RE.fullmatch(text):
-                    continue
-                text = RARITY_WORD_RE.sub("", text, count=1).strip(" -")
-                if not text:
-                    continue
-                if LEVEL_RE.search(text.replace(" ", "")) or PERCENT_RE.search(text):
-                    continue
-                if ABSOLUTE_PRIMARY_RE.search(text):
-                    continue
-                candidates.append(text)
-            return candidates[-1] if candidates else ""
-
-        if slot is not None:
-            for text in texts:
-                for candidate_slot, pattern in STANDARD_SLOT_PATTERNS:
-                    if candidate_slot is slot and pattern.search(text):
-                        return text
-        return ""
+    def _first_cape_intrinsic_value(stats: Sequence[ParsedStat]) -> float | None:
+        for stat in stats:
+            if canonical_name(stat.name) in {"damage", "health"}:
+                return abs(stat.value)
+        return None
 
     @staticmethod
     def _split_cape_stats(
         stats: tuple[ParsedStat, ...],
+        title: str,
+        level: int | None,
     ) -> tuple[tuple[ParsedStat, ...], tuple[ParsedStat, ...]]:
-        if len(stats) >= 2:
-            first_two = stats[:2]
-            if {canonical_name(stat.name) for stat in first_two} == {"damage", "health"}:
-                return first_two, stats[2:]
-        return (), stats
+        if not title or level is None:
+            return (), stats
+
+        try:
+            expected = cape_intrinsic_value(title, level)
+        except (KeyError, ValueError):
+            return (), stats
+
+        intrinsic_by_name: dict[str, ParsedStat] = {}
+        affixes: list[ParsedStat] = []
+        tolerance = max(0.35, expected * 0.012)
+
+        for stat in stats:
+            name = canonical_name(stat.name)
+            if (
+                name in {"damage", "health"}
+                and name not in intrinsic_by_name
+                and abs(abs(stat.value) - expected) <= tolerance
+            ):
+                intrinsic_by_name[name] = stat
+            else:
+                affixes.append(stat)
+
+        # APK data confirms every cape in v55 has identical Damage/Health base
+        # and scaler. If OCR catches only one of the two fixed primary lines,
+        # reconstruct the sibling rather than treating the next rolled affix as
+        # primary.
+        for name in ("damage", "health"):
+            if name not in intrinsic_by_name and intrinsic_by_name:
+                intrinsic_by_name[name] = ParsedStat(
+                    name=name,
+                    value=expected,
+                    raw_text=f"{expected:+.2f}% {name} [inferred from cape progression]",
+                    confidence=min(stat.confidence for stat in intrinsic_by_name.values()),
+                )
+
+        intrinsic = tuple(
+            intrinsic_by_name[name]
+            for name in ("damage", "health")
+            if name in intrinsic_by_name
+        )
+        return intrinsic, tuple(affixes)
