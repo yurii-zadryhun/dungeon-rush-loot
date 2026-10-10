@@ -4,10 +4,22 @@ import re
 from statistics import median
 from typing import Sequence
 
-from .config import MAX_ITEM_LEVEL, RARITY_TIERS
+from .config import MAX_ITEM_LEVEL, RARITY_TIERS, SKILLS
 from .domain import Box, OcrLine, OcrSpan, ParsedItem, ParsedStat
 from .game_catalog import match_standard_item
 from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_like_title, normalize_text, parse_rarity
+
+
+# Recognition can lose the percent glyph or render it as l/I/°.
+# The numeric digits remain strict, and missing percent is accepted only with
+# an explicit +/- sign, an unambiguous known skill, and an in-range value.
+STAT_NUMBER_RE = re.compile(
+    r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
+    r"\s*(?P<suffix>%|[lI]\s*%|[lI]\.|°|[lI])?(?=\s|$|[A-Za-z])",
+    re.I,
+)
+LEVEL_MARKER_RE = re.compile(r"\b(?:lvl|lvi|lv)\s*[-:.]?\s*\d{1,3}\b", re.I)
+NEGATIVE_ONLY_SKILLS = frozenset({"critical damage taken", "companion cooldown"})
 
 
 class OcrLineAssembler:
@@ -110,19 +122,14 @@ class LootItemParser:
         )
 
     def _level(self, lines: Sequence[OcrLine]) -> int | None:
+        levels: set[int] = set()
         for line in lines:
             text = normalize_text(line.text)
-            search_text = text[:text.find("%")] if "%" in text else text
-
-            match = LEVEL_RE.search(search_text)
-            if not match:
-                continue
-
-            level = self._normalize_ocr_level(int(match.group(1)))
-            if level is not None:
-                return level
-
-        return None
+            for match in LEVEL_RE.finditer(text):
+                level = self._normalize_ocr_level(int(match.group(1)))
+                if level is not None:
+                    levels.add(level)
+        return next(iter(levels)) if len(levels) == 1 else None
 
     @staticmethod
     def _normalize_ocr_level(level: int) -> int | None:
@@ -149,63 +156,107 @@ class LootItemParser:
         return ""
 
     def _stats(self, lines: Sequence[OcrLine]) -> list[ParsedStat]:
+        """Parse actual stat rows; never guess numeric digits from OCR glyphs."""
         parsed: list[ParsedStat] = []
         index = 0
         while index < len(lines):
-            result, consumed_next = self._parse_stat(lines, index)
-            if result is not None:
-                parsed.append(result)
-            index += 2 if consumed_next else 1
+            stat, consumed = self._parse_stat(lines, index)
+            if stat is not None:
+                parsed.append(stat)
+            index += consumed
         return self._dedupe(parsed)
 
-    def _parse_stat(self, lines: Sequence[OcrLine], index: int) -> tuple[ParsedStat | None, bool]:
+    def _parse_stat(self, lines: Sequence[OcrLine], index: int) -> tuple[ParsedStat | None, int]:
         line = lines[index]
-        source = self._percent_source(line)
-        if source is None:
-            return None, False
-        value, remainder, source_score, raw_percent = source
-        candidates = [remainder] + self._continuations(lines, index, remainder)
-        chosen_name, chosen_ratio, chosen_raw = self._best_name(candidates)
-        if chosen_name is None:
-            return None, False
-        stat = ParsedStat(chosen_name, value, f"{raw_percent} {chosen_raw}".strip(), min(source_score, chosen_ratio))
-        return stat, len(candidates) > 1 and chosen_raw == candidates[1]
+        # Numbers can appear after "Lvl 87" on the same physical OCR line.
+        clean = self._strip_level_marker(normalize_text(line.text))
+        match = STAT_NUMBER_RE.search(clean)
+        if match is None:
+            return None, 1
 
-    def _percent_source(self, line: OcrLine) -> tuple[float, str, float, str] | None:
-        sources = [(normalize_text(span.text), span.score) for span in line.spans if PERCENT_RE.search(normalize_text(span.text))]
-        sources.append((normalize_text(line.text), line.score))
-        for text, score in sources:
-            match = PERCENT_RE.search(text)
-            if match is None:
+        numeric = match.group("number")
+        suffix = (match.group("suffix") or "").strip()
+        value = float(numeric.replace(" ", "").replace(",", "."))
+        remainder = self._clean_label(clean[match.end():])
+        # Only a real percent or a close visual glyph variant counts as a
+        # recognized separator. Wholly missing separators require a sign.
+        repaired_separator = suffix not in {"%"}
+        if repaired_separator and not numeric.lstrip().startswith(("+", "-")):
+            return None, 1
+
+        candidates: list[tuple[str, int]] = [(remainder, 1)]
+        candidates.extend(self._continuations(lines, index, remainder))
+
+        ranked: list[tuple[float, int, str, str]] = []
+        for label, consumed in candidates:
+            name, ratio = fuzzy_skill_name(label)
+            if name is None:
                 continue
-            remainder = self._clean_label(text[match.end():])
-            if remainder:
-                return float(match.group(1).replace(" ", "").replace(",", ".")), remainder, score, match.group(0)
-        return None
+            # Never infer a missing percent from a poor/ambiguous name match.
+            if repaired_separator and ratio < 0.93:
+                continue
+            if not self._valid_stat_value(name, value):
+                continue
+            ranked.append((ratio, consumed, name, label))
 
-    def _continuations(self, lines: Sequence[OcrLine], index: int, remainder: str) -> list[str]:
-        if index + 1 >= len(lines) or PERCENT_RE.search(lines[index + 1].text):
-            return []
-        next_text = self._clean_label(lines[index + 1].text)
-        return [f"{remainder} {next_text}".strip()] if next_text and not looks_like_title(next_text) else []
+        if not ranked:
+            return None, 1
+        ratio, consumed, name, raw_label = max(
+            ranked, key=lambda entry: (entry[0], -entry[1])
+        )
+        if repaired_separator:
+            # We recovered the separator, NOT the number. Keep original text
+            # and signal reduced certainty relative to an intact percent glyph.
+            confidence = min(line.score, ratio, 0.93)
+        else:
+            confidence = min(line.score, ratio)
+        return ParsedStat(name, value, line.text, confidence), consumed
 
     @staticmethod
-    def _best_name(candidates: list[str]) -> tuple[str | None, float, str]:
-        scored = []
-        for raw in candidates:
-            name, ratio = fuzzy_skill_name(raw)
-            scored.append((name, ratio, raw))
-        return max(scored, key=lambda row: (row[1], len(row[2]))) if scored else (None, 0.0, "")
+    def _strip_level_marker(text: str) -> str:
+        return LEVEL_MARKER_RE.sub(" ", text).strip()
+
+    def _continuations(
+        self, lines: Sequence[OcrLine], index: int, remainder: str,
+    ) -> list[tuple[str, int]]:
+        # ML Kit sometimes places the level between a percentage and its
+        # textual label. Inspect at most two following physical rows.
+        additions: list[tuple[str, int]] = []
+        parts = [remainder] if remainder else []
+        for lookahead in (1, 2):
+            next_index = index + lookahead
+            if next_index >= len(lines):
+                break
+            text = normalize_text(lines[next_index].text)
+            if LEVEL_MARKER_RE.fullmatch(text):
+                continue
+            if STAT_NUMBER_RE.search(text) or PERCENT_RE.search(text):
+                break
+            if looks_like_title(text) or text.lower() in RARITY_TIERS:
+                break
+            if re.match(r"^\s*(?:damage|health)\s+\d", text, re.I):
+                break
+            if text.lower() in {"sell", "equip", "equipped"}:
+                break
+            cleaned = self._clean_label(text)
+            if not cleaned:
+                break
+            parts.append(cleaned)
+            additions.append((" ".join(parts), lookahead + 1))
+        return additions
+
+    @staticmethod
+    def _valid_stat_value(name: str, value: float) -> bool:
+        rule = SKILLS.get(name)
+        if rule is None or not 0.01 <= abs(value) <= rule.cap + 0.05:
+            return False
+        return (value < 0) if name in NEGATIVE_ONLY_SKILLS else (value > 0)
 
     @staticmethod
     def _clean_label(raw: str) -> str:
-        text = normalize_text(raw).strip(" :-·•")
-        text = re.sub(r"\s+\b(?:lvl|lv|lvi)\s*[-:.]?\s*\d{1,3}\b.*$", "", text, flags=re.I)
-        text = re.sub(r"\s+\bx\d+\b.*$", "", text, flags=re.I)
-        if re.fullmatch(r"(?:lvl|lv|lvi)\s*[-:.]?\s*\d{1,3}|x\d+", text, re.I):
-            return ""
-        return text.strip(" :-·•")
-
+        text = LEVEL_MARKER_RE.sub(" ", normalize_text(raw))
+        return re.sub(r"\s+", " ", text).strip(" :-·•")
+    
     @staticmethod
     def _dedupe(stats: list[ParsedStat]) -> list[ParsedStat]:
         seen: set[tuple[str, float]] = set()
