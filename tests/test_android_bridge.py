@@ -164,6 +164,60 @@ class AndroidBridgeTest(unittest.TestCase):
         self.assertEqual(result["candidate"]["rarity"], "Legendary")
         self.assertEqual(result["slot"], "helmet")
 
+    def test_infernal_tome_fresh_ocr_exp_variants_and_level_confusions(self):
+        # Captured diagnostic 2026-10-10 20:45: title is [EXP] and the
+        # exceptional Ranged Defense is highlighted orange on the game UI.
+        # A transient lost bracket must not turn that into a plain item.
+        payload = _equipment()
+        payload["backpack"] = {
+            "title": "Immortal [EXP] Crimson Backpack",
+            "rarity": "Immortal", "level": 106,
+            "stats": {
+                "critical chance": 8.04, "critical damage": 78.01,
+                "attack speed": 9.11, "ranged defense": 54.09,
+                "critical damage taken": -39.40,
+            },
+        }
+        baseline = None
+        for marker, level in (
+            ("[EXP]", "Lvl 106"),
+            ("EXP]", "LU 106"),
+            ("[EXP", "LU1O6"),
+            ("EXP", "LvU 106"),
+        ):
+            with self.subTest(marker=marker, level=level):
+                lines = [
+                    "Equipped", "Immortal [EXP] Crimson Backpack",
+                    "Health 777.00K", "+8.04% Critical Chance",
+                    "Lvl 106 +78.01% Critical Damage",
+                    "+9.11% Attack Speed", "+54.09% Ranged Defense",
+                    "-39.40% Critical Damage", "Taken",
+                    f"Immortal {marker} Infernal Tome",
+                    "Health 777.00K", "+3.40% Critical Chance",
+                    f"{level} -5.26% Companion Cooldown",
+                    "+15.54% Lifesteal", "+78.56% Ranged Defense",
+                ]
+                spans = [_span(t, i * 38, i * 38 + 27) for i, t in enumerate(lines)]
+                result = json.loads(evaluate_spans_json(
+                    json.dumps(spans), json.dumps(payload), "pvp",
+                ))
+                self.assertEqual(result["status"], "ok", result["message"])
+                self.assertEqual(result["slot"], "backpack")
+                self.assertEqual(result["candidate"]["level"], 106)
+                self.assertEqual(result["candidate"]["stats"][-1]["value"], 78.56)
+                self.assertTrue(result["verification_key"])
+                if baseline is None:
+                    baseline = result["verification_key"]
+                self.assertEqual(result["verification_key"], baseline)
+
+        lines[9] = "Immortal Infernal Tome"  # no observed EXP token
+        invalid = json.loads(evaluate_spans_json(
+            json.dumps([_span(t, i * 38, i * 38 + 27) for i, t in enumerate(lines)]),
+            json.dumps(payload), "pvp",
+        ))
+        self.assertEqual(invalid["status"], "check_ocr")
+        self.assertIn("0-0 exceptional", invalid["message"])
+
     def test_standalone_range_marker_is_not_an_item_title(self):
         from src.domain import Box, OcrLine
         from src.parsing import LootCardSplitter, LootItemParser
