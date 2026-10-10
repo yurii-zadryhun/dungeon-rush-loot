@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import difflib
 import re
 from typing import Iterable, Sequence
 
 from .domain import EquipmentSlot
-from .text import LEVEL_RE, PERCENT_RE, normalize_text
+from .text import LEVEL_RE, PERCENT_RE, normalize_text, ocr_text_similarity
 
 # Extracted from com.lavalabs.dungeonrush v55 Unity serialized assets supplied by
 # the user. 406 EquipmentData objects collapse to 365 distinct display names.
@@ -375,7 +374,7 @@ def _similarity(left: str, right: str) -> float:
         return max(0.94, len(right) / max(len(left), 1))
     if len(left) >= 5 and left in right:
         return max(0.90, len(left) / max(len(right), 1))
-    return difflib.SequenceMatcher(None, left, right).ratio()
+    return ocr_text_similarity(left, right)
 
 
 def _display_name(normalized: str) -> str:
