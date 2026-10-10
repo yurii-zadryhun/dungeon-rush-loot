@@ -32,7 +32,7 @@ internal object IconLevelRecovery {
         if (screenWidth < 200 || screenHeight < 400) return emptyList()
         val titles = spans
             .filter { rarity.containsMatchIn(it.text) && item.containsMatchIn(it.text) }
-            .filter { !it.text.contains('%') && it.text.none(Char::isDigit) }
+            .filter { !it.text.contains('%') }
             .sortedBy { it.top }
         if (titles.size != 2) return emptyList()
         if (titles[1].top - titles[0].top < screenHeight * 0.09f) return emptyList()
