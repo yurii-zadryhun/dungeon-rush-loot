@@ -225,6 +225,30 @@ class RarityAndExpTest(unittest.TestCase):
         self.assertEqual(len(parsed), 3)
         self.assertIn("Duplicate", validate_affixes("Iron Ring", parsed))
 
+    def test_special_slot_import_preserves_exp_marker(self):
+        fixtures = [
+            (
+                EquipmentSlot.WINGS,
+                ["Divine", "[EXP] Eternal", "Lvl 100", "Damage 2.25M", "Health 7.50M",
+                 "+8.00% Mega Crit Chance", "+13.13% Ranged Damage"],
+            ),
+            (
+                EquipmentSlot.CAPE,
+                ["Divine Cloak", "[EXP]", "[Mythic]", "Lvl 31",
+                 "+80.00% Damage", "+80.00% Health",
+                 "+8.00% Mega Crit Chance", "+8.89% Critical Chance"],
+            ),
+        ]
+        for slot, raw in fixtures:
+            with self.subTest(slot=slot):
+                parsed = EquipmentScreenshotParser().parse_lines(
+                    [ocr_line(value, index * 35) for index, value in enumerate(raw)]
+                )
+                self.assertEqual(parsed.slot, slot)
+                self.assertEqual(parsed.issues, ())
+                self.assertTrue(has_exp_marker(parsed.item.title))
+                self.assertEqual(len(parsed.item.stats), 2)
+
     def test_import_rejects_exp_without_exceptional_and_plain_with_exceptional(self):
         for title, affixes in [
             ("[EXP] Iron Ring", ["+6.00% Damage", "+5.00% Health"]),
