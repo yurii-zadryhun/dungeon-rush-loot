@@ -1,0 +1,68 @@
+{
+  "weapon": {
+    "title": "REPLACE ME - current weapon",
+    "rarity": "Immortal",
+    "level": 1,
+    "stats": {
+      "attack speed": 0,
+      "critical chance": 0,
+      "damage": 0,
+      "ranged damage": 0
+    }
+  },
+  "helmet": {
+    "title": "REPLACE ME - current helmet",
+    "rarity": "Immortal",
+    "level": 2,
+    "stats": {
+      "health": 0,
+      "lifesteal": 0,
+      "melee defense": 0,
+      "ranged defense": 0
+    }
+  },
+  "backpack": {
+    "title": "REPLACE ME - current backpack",
+    "rarity": "Immortal",
+    "level": 3,
+    "stats": {
+      "health": 0,
+      "triple hit chance": 0,
+      "critical chance": 0,
+      "damage": 0
+    }
+  },
+  "gloves": {
+    "title": "REPLACE ME - current gloves",
+    "rarity": "Immortal",
+    "level": 4,
+    "stats": {
+      "attack speed": 0,
+      "critical damage": 0,
+      "lifesteal": 0,
+      "damage": 0
+    }
+  },
+  "necklace": {
+    "title": "REPLACE ME - current necklace",
+    "rarity": "Immortal",
+    "level": 5,
+    "stats": {
+      "health": 0,
+      "critical damage taken": 0,
+      "block chance": 0,
+      "health regen": 0
+    }
+  },
+  "ring": {
+    "title": "REPLACE ME - current ring",
+    "rarity": "Immortal",
+    "level": 6,
+    "stats": {
+      "critical damage": 0,
+      "critical damage taken": 0,
+      "attack speed": 0,
+      "damage": 0
+    }
+  }
+}

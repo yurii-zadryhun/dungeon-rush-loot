@@ -11,7 +11,8 @@ fi
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements-cpu.txt
-python dungeon_rush_compare.py --self-test
+python -m unittest discover -s tests -v
+python -m compileall -q src
 
 echo
-echo "Ready. Run: ./compare_adb.sh"
+echo "Ready. Copy equipment.example.json to equipment.json, fill the current six items, then run ./loot_watcher.sh."
