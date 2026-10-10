@@ -5,7 +5,7 @@ Live ADB loot comparer with build-aware scoring and two execution modes:
 - `info`: compare + console + optional Termux notification; never touches the game.
 - `auto`: re-check the same candidate on a fresh frame, re-check foreground, then issue a randomized Sell/Equip gesture.
 
-The comparer scores the **whole six-item loadout** rather than treating the two visible items as isolated objects.
+The comparer scores the **whole eight-slot loadout** rather than treating the two visible items as isolated objects.
 
 ## Initial equipment state
 
@@ -15,7 +15,7 @@ Create your local state once:
 cp equipment.example.json equipment.json
 ```
 
-Fill the six items currently equipped in game: `weapon`, `helmet`, `backpack`, `gloves`, `necklace`, `ring`. Each item needs rarity, level and the exact 4-5 affixes shown by the game. `title` is only descriptive; runtime matching uses tier + level + normalized affixes, which is less sensitive to OCR spelling differences in item names.
+Fill all eight build slots: weapon, helmet, backpack, gloves, necklace, ring, wings, cape. Normal loot items use 4-5 affixes; wings also contribute their displayed absolute Damage/Health primaries, while cape Damage/Health are intrinsic primary percentages rather than rolled affixes. `title` is only descriptive; runtime matching uses tier + level + normalized affixes, which is less sensitive to OCR spelling differences in item names.
 
 `equipment.json` is intentionally gitignored. In `auto` mode, a visually confirmed Equip replaces that slot in memory **and atomically persists the new item back to the same file**. Every later drop is therefore scored against the updated build.
 
@@ -150,7 +150,7 @@ Overflow never becomes immediate combat power.
 
 However, overcap can still have **option value**. Suppose the other items have `CDT 45 + CDT 45`, and the compared slot changes from `CDT 10` to `CDT 65`. The new 55 points above the current 100% build cap are not counted as combat strength, but they can make one of the old CDT items easier to replace later.
 
-To model that without pretending overflow is current power, the scorer performs a small one-step look-ahead over the other five slots. For each other item it removes that item's **entire affix package while preserving its tier/level primary stat**, measures the build-score loss, then gives a small flexibility advantage when one or two other slots have become cheap to replace.
+To model that without pretending overflow is current power, the scorer performs a small one-step look-ahead over the other seven slots. For each other item it removes that item's **entire affix package while preserving its tier/level primary stat**, measures the build-score loss, then gives a small flexibility advantage when one or two other slots have become cheap to replace.
 
 That means an old `CDT 45` item with excellent Triple/Attack Speed is still expensive to give up; only its redundant part becomes replaceable. The look-ahead therefore evaluates the whole item, not only the capped stat.
 
@@ -172,3 +172,8 @@ bash -n loot_watcher.sh setup.sh
 ```
 
 GitHub Actions runs the unit suite, compile check, critical Ruff checks and shell syntax on Python 3.11 and 3.12.
+
+
+## Android screenshot equipment import
+
+The Android app can import the current build from 8 screenshots. The first implementation intentionally uses a fixed crop matching the current 709x1536 current-item modal, so aggregate build stats visible behind the modal are excluded from OCR. Normal slots are inferred from title signatures; cape requires a cloak/cape title plus bracketed rarity; wings require both absolute Damage and Health primary lines. A review dialog allows slot override before all eight items are persisted.
