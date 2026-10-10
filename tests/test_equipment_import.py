@@ -82,6 +82,29 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
         self.assertEqual({stat.name for stat in result.item.stats}, {"critical damage", "critical chance"})
         self.assertEqual(result.issues, ())
 
+    def test_cape_handles_rarity_merged_into_title_line(self):
+        texts = [
+            "Divine Cloak [Mythic]", "Lvl 31", "+80.0% Damage", "+80.0% Health",
+            "+33.25% Critical Damage", "+8.89% Critical Chance",
+        ]
+        result = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(texts)])
+        self.assertEqual(result.slot, EquipmentSlot.CAPE)
+        self.assertEqual(result.item.rarity, "Mythic")
+        self.assertEqual(result.item.title, "Divine Cloak")
+        self.assertEqual(result.issues, ())
+
+    def test_wings_handles_rarity_merged_into_title_line(self):
+        texts = [
+            "Divine Eternal", "Damage 2.25M", "Health 7.50M", "Lvl 100",
+            "+13.13% Ranged Damage", "+79.10% Critical Damage", "+13.19% Damage",
+            "+11.06% Critical Chance", "+30.50% Attack Speed",
+        ]
+        result = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(texts)])
+        self.assertEqual(result.slot, EquipmentSlot.WINGS)
+        self.assertEqual(result.item.rarity, "Divine")
+        self.assertEqual(result.item.title, "Eternal")
+        self.assertEqual(result.issues, ())
+
     def test_wings_and_cape_change_whole_build_metrics(self):
         rows = []
         for slot in EquipmentSlot:
@@ -123,6 +146,7 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
         crop = config["equipment_import_crop"]
         self.assertLess(crop["top"], crop["bottom"])
         self.assertLess(crop["left"], crop["right"])
+        self.assertLessEqual(crop["bottom"], 0.705)
 
 
 if __name__ == "__main__":

@@ -147,7 +147,7 @@ class EquipmentScreenshotParser:
     def _rarity(texts: Sequence[str], slot: EquipmentSlot | None) -> str | None:
         if slot is EquipmentSlot.CAPE:
             for text in texts:
-                match = BRACKET_RARITY_RE.fullmatch(text)
+                match = BRACKET_RARITY_RE.search(text)
                 if match:
                     return match.group(1)
         for text in texts:
@@ -202,7 +202,8 @@ class EquipmentScreenshotParser:
     @staticmethod
     def _title(texts: Sequence[str], slot: EquipmentSlot | None) -> str:
         if slot is EquipmentSlot.CAPE:
-            return next((text for text in texts if re.search(r"\b(?:cloak|cape)\b", text, re.I)), "")
+            title = next((text for text in texts if re.search(r"\b(?:cloak|cape)\b", text, re.I)), "")
+            return BRACKET_RARITY_RE.sub("", title).strip(" -")
 
         if slot is EquipmentSlot.WINGS:
             candidates = []
@@ -211,6 +212,9 @@ class EquipmentScreenshotParser:
                 if lower in IGNORED_IMPORT_LINES:
                     continue
                 if RARITY_WORD_RE.fullmatch(text) or BRACKET_RARITY_RE.fullmatch(text):
+                    continue
+                text = RARITY_WORD_RE.sub("", text, count=1).strip(" -")
+                if not text:
                     continue
                 if LEVEL_RE.search(text.replace(" ", "")) or PERCENT_RE.search(text):
                     continue
