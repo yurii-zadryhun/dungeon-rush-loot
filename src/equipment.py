@@ -178,17 +178,16 @@ class EquipmentCodec:
         raw_stats = raw_item.get("stats")
         if not isinstance(raw_stats, dict):
             raise EquipmentStateError(f"Slot {slot.value!r} requires a stats object.")
-        minimum, maximum = affix_bounds(slot)
-        if not minimum <= len(raw_stats) <= maximum:
-            expected = str(minimum) if minimum == maximum else f"{minimum}-{maximum}"
+        if not MIN_STATS <= len(raw_stats) <= MAX_STATS:
             raise EquipmentStateError(
-                f"Slot {slot.value!r} requires {expected} affixes; got {len(raw_stats)}."
+                f"Slot {slot.value!r} must have between {MIN_STATS} and {MAX_STATS} affixes; "
+                f"got {len(raw_stats)}."
             )
         stats = tuple(EquipmentCodec.parse_stat(slot, name, value) for name, value in raw_stats.items())
         title = str(raw_item.get("title") or f"{rarity.title()} {slot.value.title()}")
-        # A missing title in a new payload cannot safely claim [EXP] status;
-        # older imports that dropped this tag must be re-imported.
-        affix_error = validate_affixes(title, stats, minimum=minimum, maximum=maximum)
+        # The rarity and actual [EXP] marker determine EXACT affix composition.
+        # Never infer [EXP] from a parsed skill or from rarity.
+        affix_error = validate_affixes(title, stats, rarity=rarity, slot=slot)
         if affix_error:
             raise EquipmentStateError(f"Slot {slot.value!r}: {affix_error}")
 
