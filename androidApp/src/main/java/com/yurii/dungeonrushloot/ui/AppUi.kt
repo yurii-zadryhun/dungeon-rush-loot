@@ -82,7 +82,8 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
     val strategy by graph.preferences.strategy.collectAsState()
     val equipmentJson by graph.equipment.rawJson.collectAsState()
     val serviceConnected by LootAccessibilityService.connected.collectAsState()
-    val logs by graph.logs.entries.collectAsState()
+    val activeSessionId by graph.logs.activeSessionId.collectAsState()
+    val logRevision by graph.logs.revision.collectAsState()
 
     val validation = remember(equipmentJson) {
         graph.bridge.validateEquipment(equipmentJson)
@@ -111,7 +112,7 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
         StatusCard(
             title = "Equipment",
             ok = validation.valid,
-            good = "6/6 ready",
+            good = "8/8 ready",
             bad = validation.error ?: "Incomplete",
         )
 
@@ -121,6 +122,7 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
                 FilterChip(
                     selected = strategy == value,
                     onClick = { graph.preferences.setStrategy(value) },
+                    enabled = !enabled,
                     label = { Text(value.uppercase()) },
                 )
             }
@@ -141,7 +143,15 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
         }
 
         Button(
-            onClick = { graph.preferences.setEnabled(!enabled) },
+            onClick = {
+                if (enabled) {
+                    graph.preferences.setEnabled(false)
+                    graph.logs.endSession()
+                } else {
+                    graph.logs.startSession(strategy)
+                    graph.preferences.setEnabled(true)
+                }
+            },
             enabled = serviceConnected && validation.valid,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -159,7 +169,9 @@ private fun AutoScreen(graph: AppGraph, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(4.dp))
         Text("Latest decision", style = MaterialTheme.typography.titleMedium)
-        val latest = logs.lastOrNull()
+        val latest = remember(activeSessionId, logRevision) {
+            activeSessionId?.let { graph.logs.loadLatest(it, 1).firstOrNull() }
+        }
         if (latest == null) {
             Text("No decisions yet.")
         } else {
