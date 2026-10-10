@@ -86,7 +86,10 @@ fun EquipmentScreen(graph: AppGraph, modifier: Modifier = Modifier) {
             initial = drafts.getValue(slot),
             rarities = graph.bridge.config.rarities.map { it.name },
             skills = graph.bridge.config.skills,
-            affixBounds = graph.bridge.config.minimumAffixes to graph.bridge.config.maximumAffixes,
+            normalByRarity = graph.bridge.config.normalAffixesByRarity,
+            expBounds = graph.bridge.config.minExceptionalAffixes to
+                graph.bridge.config.maxExceptionalAffixes,
+            divineWingsNormal = graph.bridge.config.divineWingsNormalAffixes,
             onDismiss = { editingSlot = null },
             onSave = {
                 graph.equipment.save(slot, it)
@@ -135,16 +138,27 @@ private fun EquipmentEditorDialog(
     initial: EquipmentDraft,
     rarities: List<String>,
     skills: List<SkillDefinition>,
-    affixBounds: Pair<Int, Int>,
+    normalByRarity: Map<String, Int>,
+    expBounds: Pair<Int, Int>,
+    divineWingsNormal: Int,
     onDismiss: () -> Unit,
     onSave: (EquipmentDraft) -> Unit,
 ) {
-    val bounds = affixBounds
     var title by remember(initial) { mutableStateOf(initial.title) }
     val hasExp = EXP_MARKER.containsMatchIn(title)
     val exceptionalNames = skills.asSequence().filter { it.exceptional }.map { it.name }.toSet()
     val availableSkills = if (hasExp) skills else skills.filterNot { it.exceptional }
     var rarity by remember(initial) { mutableStateOf(initial.rarity) }
+    val rarityKey = rarity.lowercase(Locale.ROOT)
+    val normalRequired = if (
+        slot == "wings" && rarityKey == "divine" && !hasExp
+    ) divineWingsNormal else normalByRarity[rarityKey]
+    val exceptionalMinimum = if (hasExp) expBounds.first else 0
+    val exceptionalMaximum = if (hasExp) expBounds.second else 0
+    // Ultimate has no validated normal-roll count; prevent saving it.
+    val bounds = if (normalRequired != null) {
+        (normalRequired + exceptionalMinimum) to (normalRequired + exceptionalMaximum)
+    } else 1 to 5
     var levelText by remember(initial) { mutableStateOf(initial.level.toString()) }
     var primaryAttackText by remember(initial) { mutableStateOf(initial.primaryAttack?.toString().orEmpty()) }
     var primaryHealthText by remember(initial) { mutableStateOf(initial.primaryHealth?.toString().orEmpty()) }
@@ -207,6 +221,13 @@ private fun EquipmentEditorDialog(
                     "Affixes (" + bounds.first + "–" + bounds.second + ")"
                 }
                 Text(affixLabel, fontWeight = FontWeight.Bold)
+                Text(
+                    if (normalRequired == null) "Unverified rarity: affix rules are unknown."
+                    else "$normalRequired normal + $exceptionalMinimum–$exceptionalMaximum exceptional",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (normalRequired == null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
                 rows.forEachIndexed { index, row ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -251,13 +272,16 @@ private fun EquipmentEditorDialog(
 
                     error = when {
                         level == null || level !in 1..130 -> "Level must be 1–130."
+                        normalRequired == null -> "No verified affix rule for $rarity."
                         parsedRows.size !in bounds.first..bounds.second ->
                             "Expected " + bounds.first + "–" + bounds.second + " valid affixes."
                         parsedRows.map { it.first }.distinct().size != parsedRows.size -> "Affixes must be unique."
-                        hasExp && parsedRows.none { it.first in exceptionalNames } ->
-                            "[EXP] items require at least one exceptional affix."
-                        !hasExp && parsedRows.any { it.first in exceptionalNames } ->
-                            "Exceptional affixes require [EXP] in the title."
+                        parsedRows.count { it.first !in exceptionalNames } != normalRequired ->
+                            "$rarity requires exactly $normalRequired normal affixes."
+                        parsedRows.count { it.first in exceptionalNames } !in
+                            exceptionalMinimum..exceptionalMaximum ->
+                            if (hasExp) "[EXP] requires 1–2 exceptional affixes."
+                            else "Exceptional affixes require [EXP] in the title."
                         slot == "wings" && (primaryAttack == null || primaryAttack <= 0) ->
                             "Wings require positive primary Damage."
                         slot == "wings" && (primaryHealth == null || primaryHealth <= 0) ->
