@@ -34,28 +34,42 @@ The **Logs** tab is a file browser. **Application log** appears first, followed 
 
 ## Alt accounts, rarity and exceptional rolls
 
-All eleven catalog rarities (Common through Ultimate) can be used in equipment
-profiles and live comparisons. Each slot accepts **2–5 rolled affixes**, even
-Wings and Cape. Cape's fixed Damage/Health intrinsic values are separate from
-its rolled affix count.
+The **rarity defines an exact number of ordinary rolled affixes**:
 
-The item's **[EXP]** name marker is a rule, not decoration:
+| Rarity | Ordinary affixes | Exceptional affixes without [EXP] | With [EXP] |
+|---|---:|---:|---:|
+| Common / Uncommon / Rare / Epic | 1 | 0 | 1–2 additional |
+| Legendary / Mythic / Artifact / Ancient | 2 | 0 | 1–2 additional |
+| Immortal / Divine | 3 | 0 | 1–2 additional |
 
-- An **[EXP]** item must have at least one exceptional roll (for example Mega
-  Crit Chance, Triple Hit Chance or Critical Damage Taken). Normal affixes may
-  occupy its remaining slots.
-- An item **without [EXP]** must have only normal affixes. This is checked
-  before Auto, during screenshot import, and when editing a saved profile.
-- The editor reads the 2–5 bounds and exceptional-skill catalog directly from
-  the shared Python rules rather than duplicating them in Kotlin.
+The total is therefore **1–5 rolled affixes** depending on rarity and marker.
+[EXP] means there must be either one or two exceptional rolls, in addition to
+all normal rolls for that rarity. It is not a substitute for a normal affix.
+Without [EXP], exceptional rolls are forbidden.
 
-**Existing installs:** old equipment imports stripped the [EXP] marker from
-standard item titles. Those persisted items may now fail validation; re-import
-the eight screenshots after upgrading so the true marker is retained. The app
-does not guess [EXP] from the existence of an exceptional roll.
+The item-name catalog includes **Ultimate**, but its ordinary-affix count has
+not been provided or confirmed. Ultimate remains visible as a rarity, yet
+configuration/import/Auto **fails closed** rather than guessing a valid count.
 
-If an OCR pass misses a likely affix line, the parser returns CHECK instead of
-silently assuming a valid two-affix item.
+The user's real Divine Eternal Wings screenshot contains **five normal rolled
+affixes without [EXP]**; this is a known Wings-specific exception to Divine's
+three-normal rule. Cape's fixed Damage/Health intrinsic percentages are excluded
+from the rolled-affix count. The other documented Cape affixes obey its rarity.
+
+All rules are centralized in Python (`src/affix_rules.py`) and used for
+persisted equipment, screenshot import, and live comparison. Android receives
+the same rarity-to-normal-count mapping, EXP range and verified Wings exception
+via `app_config_json()`, and uses those values for editor input/count checks.
+The editor does not infer [EXP] from the skills selected.
+
+**Important OCR limitation:** With [EXP], one *or* two exceptional affixes are
+valid. If OCR entirely loses the second exceptional line, a valid-looking
+one-exceptional item cannot be disproved from rarity alone. Visible malformed
+affix rows yield CHECK, and missing ordinary affixes always fail count checking.
+Do not claim that cardinality alone detects an invisible second exceptional.
+
+Older builds stripped [EXP] from saved standard-item titles. Re-import the
+equipment screenshots after updating so the true marker is retained.
 
 ## Live OCR parsing
 
