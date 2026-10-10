@@ -179,6 +179,11 @@ class EquipmentRepositoryTest(unittest.TestCase):
                     stat("damage", 15),
                 ),
             )
+            # Comparisons now require real catalog-backed titles: the UI
+            # must prove that equipped and candidate belong to the same slot.
+            from dataclasses import replace
+            equipped = replace(equipped, title="Divine Iron Ring")
+            candidate = replace(candidate, title="Divine Void Ring")
             comparer = ItemComparer(repository, BuildScorer(strategy_for(ScoringStrategy.UNIVERSAL)))
             comparison = comparer.compare(equipped, candidate)
             self.assertEqual(comparison.equipment_slot, EquipmentSlot.RING)
