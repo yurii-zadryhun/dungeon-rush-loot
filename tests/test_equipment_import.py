@@ -7,6 +7,7 @@ from src.android_bridge import app_config_json, equipment_from_imports_json
 from src.domain import Box, EquipmentSlot, OcrLine
 from src.equipment import EquipmentCodec
 from src.equipment_import import EquipmentScreenshotParser
+from src.game_catalog import match_standard_item
 from src.scoring import BuildMetricsAggregator
 
 
@@ -18,7 +19,23 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
     def setUp(self):
         self.parser = EquipmentScreenshotParser()
 
-    def test_standard_slots_are_detected_from_title_keywords(self):
+    def test_apk_catalog_handles_names_which_do_not_describe_the_slot(self):
+        fixtures = {
+            "Celestial Lyre": EquipmentSlot.BACKPACK,
+            "Infernal Tome": EquipmentSlot.BACKPACK,
+            "Radiant Shield": EquipmentSlot.BACKPACK,
+            "Blessed Tiara": EquipmentSlot.HELMET,
+            "Undying Mask": EquipmentSlot.HELMET,
+            "Eternal Cape": EquipmentSlot.HELMET,
+            "Celestial Lightning": EquipmentSlot.WEAPON,
+        }
+        for title, slot in fixtures.items():
+            with self.subTest(title=title):
+                match = match_standard_item([title])
+                self.assertIsNotNone(match)
+                self.assertEqual(match.slot, slot)
+
+    def test_current_standard_screens_are_catalog_classified(self):
         fixtures = {
             EquipmentSlot.HELMET: [
                 "Divine", "[EXP] +11 Celestial Helmet", "Health 7.25M",
@@ -31,22 +48,22 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
                 "-51.74% Critical Damage Taken", "+24.12% Triple Hit Chance", "Lvl124",
             ],
             EquipmentSlot.BACKPACK: [
-                "Immortal", "[EXP] +11 Crimson Backpack", "Health 1.72M",
+                "Immortal", "(EXP] •11 Crimson", "Backpack", "Health 1.72M",
                 "+8.04% Critical Chance", "+78.01% Critical Damage", "+9.11% Attack Speed",
                 "+54.09% Ranged Defense", "-39.40% Critical Damage Taken", "Lvl106",
             ],
             EquipmentSlot.NECKLACE: [
-                "Immortal", "[EXP] +11 Dread Necklace", "Health 521.56K",
+                "Immortal", "EXP] 11 Dread Necklace", "Health 521.56K",
                 "+11.32% Lifesteal", "-3.66% Companion Cooldown", "+46.04% Critical Damage",
                 "+24.44% Triple Hit Chance", "-44.78% Critical Damage Taken", "Lvl12",
             ],
             EquipmentSlot.RING: [
-                "Immortal", "[EXP] +11 Void Ring", "Damage 164.42K",
+                "Immortal", "(EXP] •11 Void Ring", "Damage 164.42K",
                 "+3.64% Health Regen", "-5.72% Companion Cooldown", "+8.74% Critical Chance",
                 "+23.09% Triple Hit Chance", "+9.07% Mega Crit Chance", "Lvl16",
             ],
             EquipmentSlot.WEAPON: [
-                "Divine", "[EXP] +11 Eternal Crossbow [Range]", "Damage 709.35K",
+                "Divine", "[EXP] +11 Eternal Crossbow", "[Range]", "Damage 709.35K",
                 "+87.06% Critical Damage", "+8.21% Health", "-4.98% Companion Cooldown",
                 "+9.40% Mega Crit Chance", "Lvl30",
             ],
@@ -56,30 +73,54 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
                 result = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(texts)])
                 self.assertEqual(result.slot, slot)
                 self.assertIsNotNone(result.item)
+                self.assertEqual(result.issues, ())
 
-    def test_wings_use_two_absolute_primaries_and_keep_all_five_affixes(self):
+    def test_dedicated_level_crop_can_recover_digits_without_lvl_glyphs(self):
         texts = [
-            "Divine", "Eternal", "Damage 2.25M", "Health 7.50M", "Lvl 100",
+            "Divine", "[EXP] +11 Celestial Helmet", "Health 7.25M",
+            "+18.92% Lifesteal", "+1.98% Ranged Damage", "+10.82% Critical Chance",
+            "+67.63% Melee Defense", "+6.54% Mega Crit Chance",
+        ]
+        result = self.parser.parse_lines(
+            [line(text, i * 35) for i, text in enumerate(texts)],
+            [line("87", 0)],
+        )
+        self.assertEqual(result.slot, EquipmentSlot.HELMET)
+        self.assertEqual(result.item.level, 87)
+        self.assertEqual(result.issues, ())
+
+    def test_wings_infer_level_from_apk_primary_progression_when_ocr_misses_it(self):
+        texts = [
+            "Divine", "Eternal", "Damage 2.25M", "Health 7.50M",
             "+13.13% Ranged Damage", "+79.10% Critical Damage", "+13.19% Damage",
             "+11.06% Critical Chance", "+30.50% Attack Speed",
         ]
         result = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(texts)])
         self.assertEqual(result.slot, EquipmentSlot.WINGS)
+        self.assertEqual(result.item.level, 100)
         self.assertEqual(result.item.primary_attack, 2_250_000)
         self.assertEqual(result.item.primary_health, 7_500_000)
         self.assertEqual(len(result.item.stats), 5)
         self.assertEqual(result.issues, ())
 
-    def test_cape_separates_intrinsic_damage_health_from_affixes(self):
+    def test_cape_recovers_missing_fixed_damage_line_without_stealing_an_affix(self):
+        # Matches the first bad Android import: ML Kit saw Health and the rolled
+        # affixes but skipped the fixed +80% Damage line.
         texts = [
-            "Divine Cloak", "[Mythic]", "Lvl 31", "+80.0% Damage", "+80.0% Health",
+            "Divine Cloak", "[Mythic]", "Lvl 31", "+80.0% Health",
             "+33.25% Critical Damage", "+8.89% Critical Chance",
         ]
         result = self.parser.parse_lines([line(text, i * 35) for i, text in enumerate(texts)])
         self.assertEqual(result.slot, EquipmentSlot.CAPE)
         self.assertEqual(result.item.rarity, "Mythic")
-        self.assertEqual({stat.name for stat in result.item.intrinsic_stats}, {"damage", "health"})
-        self.assertEqual({stat.name for stat in result.item.stats}, {"critical damage", "critical chance"})
+        self.assertEqual(
+            {stat.name: stat.value for stat in result.item.intrinsic_stats},
+            {"damage": 80.0, "health": 80.0},
+        )
+        self.assertEqual(
+            {stat.name for stat in result.item.stats},
+            {"critical damage", "critical chance"},
+        )
         self.assertEqual(result.issues, ())
 
     def test_cape_handles_rarity_merged_into_title_line(self):
@@ -138,14 +179,17 @@ class EquipmentScreenshotParserTest(unittest.TestCase):
         self.assertGreaterEqual(metrics.stats["damage"], 80)
         self.assertGreaterEqual(metrics.stats["health"], 80)
 
-    def test_android_config_exposes_static_equipment_import_crop_and_eight_slots(self):
+    def test_android_config_exposes_static_import_and_level_crops(self):
         config = json.loads(app_config_json())
         self.assertEqual(len(config["slots"]), 8)
         self.assertIn("wings", config["slots"])
         self.assertIn("cape", config["slots"])
+
         crop = config["equipment_import_crop"]
-        self.assertLess(crop["top"], crop["bottom"])
-        self.assertLess(crop["left"], crop["right"])
+        level_crop = config["equipment_import_level_crop"]
+        for rect in (crop, level_crop):
+            self.assertLess(rect["top"], rect["bottom"])
+            self.assertLess(rect["left"], rect["right"])
         self.assertLessEqual(crop["bottom"], 0.705)
 
 
