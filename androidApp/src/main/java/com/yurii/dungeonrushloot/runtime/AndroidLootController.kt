@@ -157,7 +157,8 @@ class AndroidLootController(
                 log.append(verified.event, runtimeMessage)
                 markHandled(candidateKey)
             } finally {
-                verified.frame.bitmap.recycle()
+                if (verified !== fresh) verified.frame.bitmap.recycle()
+                fresh.frame.bitmap.recycle()
             }
         } finally {
             first.frame.bitmap.recycle()
