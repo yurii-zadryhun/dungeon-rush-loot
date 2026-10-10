@@ -32,34 +32,21 @@ The **Logs** tab is a file browser. **Application log** appears first, followed 
 - All log append operations flush/fsync immediately. Detail screens paginate the newest records in batches of 50.
 - **Export** is on each file's detail page, not in the file browser. It saves a raw JSONL snapshot directly into the user's **Downloads** directory using Android MediaStore, with no location/name picker and no storage permission on minSdk 30. A failed export cleans up the incomplete destination.
 
-## One-shot OCR screenshot diagnostic (opt-in)
+## Live OCR level recovery
 
-This is for troubleshooting cases where the ML Kit OCR lines do not match the
-visible game UI. It is **not** part of normal Auto and never taps Sell/Equip.
+Full-popup ML Kit OCR reads the right-hand affixes well but can entirely miss
+the `Lvl` labels drawn over the two item icons. When both passes cannot
+recover a level, Android performs a **targeted icon-label OCR fallback**:
+two small regions anchored on the recognized item-title rows are read in
+normal and high-contrast mode. The resulting text is sent through the same
+strict Python parser and rarity/affix validation.
 
-1. Open a loot popup in Dungeon Rush (with the Equipped and candidate cards).
-2. Open Dungeon Rush Loot, ensure Accessibility is connected, and **STOP AUTO**.
-3. On the **Auto** tab, tap **Capture next game OCR as ZIP**.
-4. Switch back to Dungeon Rush with that loot popup open. The next screenshot
-   from the game is captured once, processed with the normal 2.5× ML Kit
-   pipeline, and saved automatically to **Downloads**. You can cancel an
-   armed request in the app before switching back.
-5. Return to the app: the file name appears under the capture button. Share
-   that ZIP for debugging.
+No missing level is inferred from the equipped item, UI tier, rarity, or
+previous screenshot. An unreadable label, conflicting level, or unknown
+title still yields **CHECK OCR** and no automated tap.
 
-The ZIP contains:
-
-- `screen.png` — full original AccessibilityService screenshot;
-- `ocr-crop.png` — actual source-pixel crop passed to the OCR preprocessing;
-- `ocr-input.png` — the **exact upscaled bitmap** provided to ML Kit;
-- `ocr.json` — source frame dimensions, relative and pixel crop bounds,
-  OCR input dimensions/scale, recognized line text/confidence/full-screen boxes,
-  and the Python parser decision (or error, if validation cannot run).
-
-Screenshot contents can include your game nickname and other visible on-screen
-information. Review the ZIP before sharing. Nothing is captured unless armed;
-no screenshots are retained in app-private storage after ZIP publication,
-and failed exports clean up their incomplete MediaStore destination.
+The temporary one-shot screenshot/ZIP diagnostic has been removed from the
+application. Only existing JSONL session and application logs remain.
 
 ## Alt accounts, rarity and exceptional rolls
 
