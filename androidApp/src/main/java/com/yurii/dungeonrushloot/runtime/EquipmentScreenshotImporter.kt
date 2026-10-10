@@ -54,9 +54,20 @@ class EquipmentScreenshotImporter(
             // even when ML Kit misses the outlined "Lvl" glyphs.
             val level35 = recognizePass(ocr, frame, levelCrop, index, "level_3_5x", 3.5f)
             val level50 = recognizePass(ocr, frame, levelCrop, index, "level_5_0x", 5.0f)
-            val levelSpans = mergeRows(level35, level50)
+            var levelSpans = mergeRows(level35, level50)
+            var result = bridge.importEquipment(spans, levelSpans)
 
-            val result = bridge.importEquipment(spans, levelSpans)
+            if ("Could not parse level." in result.issues) {
+                // Last resort: extract bright level glyphs from the icon on a
+                // white background. Run it only when normal OCR could not read
+                // the level; both raw passes and this fallback are exported.
+                val lightText = recognizePass(
+                    ocr, frame, levelCrop, index,
+                    "level_light_text_5_0x", 5.0f, lightText = true,
+                )
+                levelSpans = mergeRows(levelSpans, lightText)
+                result = bridge.importEquipment(spans, levelSpans)
+            }
             appLog.info(
                 category = "equipment_import",
                 event = "image_processed",
@@ -94,9 +105,10 @@ class EquipmentScreenshotImporter(
         imageIndex: Int,
         name: String,
         scale: Float,
+        lightText: Boolean = false,
     ): List<OcrSpanDto> {
         return try {
-            ocr.recognizeLines(frame, bounds, scale).also { spans ->
+            ocr.recognizeLines(frame, bounds, scale, lightText = lightText).also { spans ->
                 appLog.info(
                     category = "equipment_import",
                     event = "ocr_pass",
@@ -105,6 +117,7 @@ class EquipmentScreenshotImporter(
                         .put("image_index", imageIndex)
                         .put("pass", name)
                         .put("scale", scale.toDouble())
+                        .put("light_text", lightText)
                         .put("lines", spansJson(spans)),
                 )
             }
@@ -117,7 +130,8 @@ class EquipmentScreenshotImporter(
                 details = JSONObject()
                     .put("image_index", imageIndex)
                     .put("pass", name)
-                    .put("scale", scale.toDouble()),
+                    .put("scale", scale.toDouble())
+                    .put("light_text", lightText),
             )
             throw error
         }
