@@ -30,6 +30,9 @@ def item_payload(item: ParsedItem | None) -> dict[str, Any] | None:
         "tier": item.tier,
         "level": item.level,
         "stats": [asdict(stat) for stat in item.stats],
+        "intrinsic_stats": [asdict(stat) for stat in item.intrinsic_stats],
+        "primary_attack": item.primary_attack,
+        "primary_health": item.primary_health,
         "average_ocr_confidence": item.average_ocr_confidence,
         "melee": item.melee,
     }
