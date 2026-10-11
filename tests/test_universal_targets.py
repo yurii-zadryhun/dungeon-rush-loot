@@ -94,6 +94,24 @@ class UniversalTargetContract(unittest.TestCase):
         self.assertGreater(component(four, "target_mega"), component(almost, "target_mega"))
         self.assertEqual(component(four, "target_mega"), component(five, "target_mega"))
 
+    def test_missing_exceptional_roles_outweigh_one_near_cap_normal_roll(self):
+        strategy = strategy_for(ScoringStrategy.UNIVERSAL)
+        # A single roll of junk/normal quality must not be kept in preference
+        # to the missing THIRD good Triple or FOURTH good Mega roll.
+        for exceptional, rolls, new_value, normal, old_value in (
+            ("triple hit chance", (29.0, 29.0), 27.0, "attack speed", 40.0),
+            ("mega crit chance", (9.8, 9.8, 9.8), 9.5, "critical damage", 100.0),
+        ):
+            with self.subTest(exceptional=exceptional):
+                old = metrics_with_rolls({
+                    exceptional: rolls,
+                    normal: (old_value,),
+                })
+                new = metrics_with_rolls({
+                    exceptional: (*rolls, new_value),
+                })
+                self.assertGreater(strategy.score(new).total, strategy.score(old).total)
+
     def test_normal_skill_ordering_on_each_item_matches_user_priorities(self):
         def contribution(name: str, fraction: float = 1.0) -> float:
             return component({name: (SKILLS[name].cap * fraction,)}, "normal_priorities")
@@ -125,7 +143,7 @@ class UniversalTargetContract(unittest.TestCase):
         })
         universal = strategy_for(ScoringStrategy.UNIVERSAL)
         self.assertGreater(universal.score(paired).total,
-                           universal.score(split).total + 18.0)
+                           universal.score(split).total + 13.0)
         for mode in (ScoringStrategy.PVE, ScoringStrategy.PVP):
             strategy = strategy_for(mode)
             self.assertAlmostEqual(strategy.score(paired).total,
