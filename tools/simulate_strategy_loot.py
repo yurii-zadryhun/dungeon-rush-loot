@@ -303,7 +303,7 @@ def markdown_report(data: dict) -> str:
             )
         lines.extend([
             "",
-            "**Final total stats:**  + "; ".join(
+            "**Final total stats:** " + "; ".join(
                 f"{k}: {v:g}%" for k, v in result["total_stats"].items()
             ),
             "",
