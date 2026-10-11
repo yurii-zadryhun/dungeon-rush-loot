@@ -85,6 +85,7 @@ class BuildMetricsAggregator:
     def aggregate(self, loadout: EquipmentLoadout) -> BuildMetrics:
         stats: dict[str, float] = {}
         equipment_rolls: dict[str, list[float]] = {}
+        item_affixes: dict[EquipmentSlot, dict[str, float]] = {}
         base_attack = 0.0
         base_health = 0.0
         for slot, item in loadout:
@@ -103,6 +104,7 @@ class BuildMetricsAggregator:
                 if slot in ATTACK_SLOTS or slot in HEALTH_SLOTS:
                     if stat in item.stats:
                         equipment_rolls.setdefault(name, []).append(value)
+                        item_affixes.setdefault(slot, {})[name] = value
         return BuildMetrics(
             base_attack=base_attack,
             base_health=base_health,
@@ -110,6 +112,7 @@ class BuildMetricsAggregator:
             health_progression=base_health / REFERENCE_BASE_HEALTH,
             stats=stats,
             equipment_rolls={name: tuple(values) for name, values in equipment_rolls.items()},
+            item_affixes=item_affixes,
         )
 
 
