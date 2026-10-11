@@ -221,7 +221,7 @@ class UniversalScoringStrategy:
     # log-score. These are preferences, not verified game-mechanic formulas.
     CDT_PER_ROLL = 50.0
     SIDE_DEFENSE_PER_ROLL = 95.0
-    TRIPLE_TOTAL = 90.0
+    TRIPLE_TOTAL = 95.0
     MEGA_TOTAL = 40.0
     NORMAL_WEIGHTS = {
         "attack speed": 22.0,
@@ -264,31 +264,26 @@ class UniversalScoringStrategy:
         triple = self._rolls(metrics, "triple hit chance")
         mega = self._rolls(metrics, "mega crit chance")
 
-        # Balanced goal coverage: an underfilled target is worth progressively
-        # more than an already nearly complete one. Each target is independently
-        # saturated, so 200% ranged defense does NOT compensate for missing
-        # mega crit or for the second -50% CDT roll.
-        #
-        # We score both aggregate offense targets and the quality/number of
-        # individual rolls. This represents 3 strong Triple and 4 strong Mega
-        # while permitting a fourth Triple or fifth Mega if needed.
-        def goal(progress: float) -> float:
-            p = min(max(progress, 0.0), 1.0)
-            return 260.0 * p - 400.0 * (1.0 - p) ** 2
+        # Desired defensive distribution: two separate -50% CDT rolls and
+        # ONE strong roll for each damage type. Extra defense saturates.
+        # Favor near-cap rolls rather than accumulating weak fragments. The
+        # convex finish bonus makes 50 vs 47 CDT and 95 vs 87 defense matter.
+        def coverage(value: float, target: float) -> float:
+            ratio = self._saturation(value, target)
+            return 125.0 * ratio + 40.0 * ratio ** 8
 
-        cdt_progress = [self._saturation(v, self.CDT_PER_ROLL) for v in cdt[:2]]
-        cdt_progress.extend([0.0] * (2 - len(cdt_progress)))
-        defense = sum(goal(p) for p in cdt_progress)
-        defense += goal(self._saturation(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0)
-        defense += goal(self._saturation(melee[0], self.SIDE_DEFENSE_PER_ROLL) if melee else 0.0)
+        defense = sum(coverage(v, self.CDT_PER_ROLL) for v in cdt[:2])
+        defense += coverage(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0
+        defense += coverage(melee[0], self.SIDE_DEFENSE_PER_ROLL) if melee else 0.0
 
-        triple_total = self._saturation(sum(triple), self.TRIPLE_TOTAL)
-        triple_quality = sum(self._saturation(v, 27.0) for v in triple[:3]) / 3.0
-        triple_bonus = goal(triple_total) + goal(triple_quality)
-
-        mega_total = self._saturation(sum(mega), self.MEGA_TOTAL)
-        mega_quality = sum(self._saturation(v, 9.0) for v in mega[:4]) / 4.0
-        mega_bonus = goal(mega_total) + goal(mega_quality)
+        # A third or fourth strong Triple roll reaches ~90-100; 4-5 Mega
+        # rolls reach ~40-50. Reward both total and individually good rolls.
+        triple_ratio = self._saturation(sum(triple), self.TRIPLE_TOTAL)
+        triple_bonus = 240.0 * triple_ratio
+        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
+        mega_ratio = self._saturation(sum(mega), self.MEGA_TOTAL)
+        mega_bonus = 240.0 * mega_ratio + 30.0 * mega_ratio ** 8
+        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
 
         # Rank every normal affix separately; an attack-speed+crit-damage
         # pair in six slots earns six times the reward of the same pair in
