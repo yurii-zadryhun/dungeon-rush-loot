@@ -136,6 +136,41 @@ def run_strategy(
     )
 
 
+def universal_target_report(loadout: EquipmentLoadout) -> dict:
+    """A factual diagnostic, NOT part of the build selection objective."""
+    per_item = {
+        slot.value: {stat.name: abs(stat.value) for stat in loadout.item(slot).stats}
+        for slot in STANDARD_SLOTS
+    }
+    def values(name: str) -> list[float]:
+        return sorted((item[name] for item in per_item.values() if name in item),
+                      reverse=True)
+
+    cdt, rd, md = values("critical damage taken"), values("ranged defense"), values("melee defense")
+    triple, mega = values("triple hit chance"), values("mega crit chance")
+    normals = ("attack speed", "critical damage", "critical chance",
+               "damage", "ranged damage", "lifesteal", "block chance", "health")
+    count = {name: len(values(name)) for name in normals}
+    near_cap = {
+        name: sum(v >= SKILLS[name].cap * .80 for v in values(name))
+        for name in normals
+    }
+    return {
+        "cdt_rolls": cdt,
+        "ranged_defense_rolls": rd,
+        "melee_defense_rolls": md,
+        "triple_rolls": triple,
+        "mega_rolls": mega,
+        "cdt_two_50_plus": sum(v >= 50 for v in cdt) >= 2,
+        "ranged_one_90_plus": bool(rd and rd[0] >= 90),
+        "melee_one_90_plus": bool(md and md[0] >= 90),
+        "triple_target": 3 <= len(triple) <= 4 and sum(triple) >= 90,
+        "mega_target": 4 <= len(mega) <= 5 and sum(mega) >= 40,
+        "normal_counts": count,
+        "normal_near_cap_counts": near_cap,
+    }
+
+
 def simulate(iterations: int = 50_000, seed: int = 20261011,
              fixture: Path = DEFAULT_EQUIPMENT,
              profiles: tuple[ScoringStrategy, ...] = PROFILES) -> dict:
@@ -170,6 +205,7 @@ def simulate(iterations: int = 50_000, seed: int = 20261011,
         metrics = BuildScorer(strategy_for(ScoringStrategy.PVP)).aggregator.aggregate(outcome.final)
         results[outcome.strategy] = {
             "equips": outcome.equipped,
+            "universal_target_report": universal_target_report(outcome.final),
             "sells": outcome.sold,
             "equips_by_slot": outcome.by_slot,
             "own_objective_score": round(outcome.score_total, 3),
@@ -249,9 +285,25 @@ def markdown_report(data: dict) -> str:
             lines.append(
                 f"| {slot.value} | {item['rarity']} | {item['level']} | {normal} | {exceptional} |"
             )
+        if "universal_target_report" in result:
+            goals = result["universal_target_report"]
+            lines.append("")
+            lines.append(
+                "**Universal goal checks:** " +
+                "; ".join(
+                    f"{name}: {'YES' if goals[name] else 'NO'}"
+                    for name in ("cdt_two_50_plus", "ranged_one_90_plus",
+                                 "melee_one_90_plus", "triple_target", "mega_target")
+                )
+            )
+            lines.append(
+                "**Normal affix counts (AS / CD / CC):** " +
+                " / ".join(str(goals["normal_counts"][name])
+                           for name in ("attack speed", "critical damage", "critical chance"))
+            )
         lines.extend([
             "",
-            "**Final total stats:** " + "; ".join(
+            "**Final total stats:**  + "; ".join(
                 f"{k}: {v:g}%" for k, v in result["total_stats"].items()
             ),
             "",
