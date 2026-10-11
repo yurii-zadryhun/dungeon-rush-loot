@@ -110,6 +110,8 @@ class BuildMetrics:
     # Rolls from the six interchangeable items, excluding fixed Wings/Cape.
     # Preserves per-item quality/count information lost in aggregate totals.
     equipment_rolls: Mapping[str, tuple[float, ...]] | None = None
+    # Retain roll co-occurrence on the same item for paired normal-skill goals.
+    item_affixes: Mapping[EquipmentSlot, Mapping[str, float]] | None = None
 
 
 @dataclass(frozen=True)
