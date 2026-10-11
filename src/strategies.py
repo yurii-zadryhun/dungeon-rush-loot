@@ -224,9 +224,9 @@ class UniversalScoringStrategy:
     TRIPLE_TOTAL = 95.0
     MEGA_TOTAL = 40.0
     NORMAL_WEIGHTS = {
-        "attack speed": 32.0,
-        "critical damage": 32.0,
-        "critical chance": 19.0,
+        "attack speed": 22.0,
+        "critical damage": 22.0,
+        "critical chance": 14.0,
         "damage": 6.0,
         "ranged damage": 6.0,
         "lifesteal": 2.0,
@@ -270,7 +270,7 @@ class UniversalScoringStrategy:
         # convex finish bonus makes 50 vs 47 CDT and 95 vs 87 defense matter.
         def coverage(value: float, target: float) -> float:
             ratio = self._saturation(value, target)
-            return 90.0 * ratio + 25.0 * ratio ** 6
+            return 125.0 * ratio + 40.0 * ratio ** 8
 
         defense = sum(coverage(v, self.CDT_PER_ROLL) for v in cdt[:2])
         defense += coverage(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0
@@ -278,11 +278,12 @@ class UniversalScoringStrategy:
 
         # A third or fourth strong Triple roll reaches ~90-100; 4-5 Mega
         # rolls reach ~40-50. Reward both total and individually good rolls.
-        triple_bonus = 110.0 * self._saturation(sum(triple), self.TRIPLE_TOTAL)
-        triple_bonus += 12.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
+        triple_ratio = self._saturation(sum(triple), self.TRIPLE_TOTAL)
+        triple_bonus = 240.0 * triple_ratio
+        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
         mega_ratio = self._saturation(sum(mega), self.MEGA_TOTAL)
-        mega_bonus = 155.0 * mega_ratio + 30.0 * mega_ratio ** 8
-        mega_bonus += 18.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
+        mega_bonus = 240.0 * mega_ratio + 30.0 * mega_ratio ** 8
+        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
 
         # Rank every normal affix separately; an attack-speed+crit-damage
         # pair in six slots earns six times the reward of the same pair in
@@ -302,8 +303,8 @@ class UniversalScoringStrategy:
             attack = self._saturation(affixes.get("attack speed", 0.0), 36.0)
             crit_damage = self._saturation(affixes.get("critical damage", 0.0), 90.0)
             crit_chance = self._saturation(affixes.get("critical chance", 0.0), 10.0)
-            paired_normals += 15.0 * attack * crit_damage
-            paired_normals += 5.0 * attack * crit_damage * crit_chance
+            paired_normals += 10.0 * attack * crit_damage
+            paired_normals += 4.0 * attack * crit_damage * crit_chance
         normal += paired_normals
 
         components = (
