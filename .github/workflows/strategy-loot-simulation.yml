@@ -1,10 +1,14 @@
-name: Strategy loot Monte Carlo
+name: Universal target Monte Carlo
 
 on:
   push:
     branches: [android-live]
     paths:
       - "tools/simulate_strategy_loot.py"
+      - "src/strategies.py"
+      - "src/scoring.py"
+      - "src/domain.py"
+      - "tests/test_universal_targets.py"
       - "tests/test_strategy_loot_simulation.py"
       - "tests/fixtures/strategy_start_equipment.json"
       - ".github/workflows/strategy-loot-simulation.yml"
@@ -14,12 +18,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: strategy-loot-simulation
+  group: universal-target-simulation
   cancel-in-progress: true
 
 jobs:
   simulate:
-    name: EXP loot 50k per strategy
+    name: Universal 50k EXP loot target
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -29,17 +33,19 @@ jobs:
           python-version: "3.12"
       - name: Install shared dependencies
         run: python -m pip install "Pillow>=10,<13" "numpy>=1.26,<3" "rich>=13,<15"
-      - name: Test generator and exact comparer parity
-        run: python -m unittest discover -s tests -p 'test_strategy_loot_simulation.py' -v
-      - name: Simulate identical 50k drops for PVP, PVE and Universal
-        run: python -m tools.simulate_strategy_loot --iterations 50000 --seed 20261011 --output dist/strategy-simulation-50k
+      - name: Test generator, production comparer parity and target scoring
+        run: |
+          python -m unittest discover -s tests -p 'test_strategy_loot_simulation.py' -v
+          python -m unittest discover -s tests -p 'test_universal_targets.py' -v
+      - name: Simulate 50k EXP drops for Universal only
+        run: python -m tools.simulate_strategy_loot --iterations 50000 --seed 20261011 --strategies universal --output dist/universal-target-50k
       - name: Publish summary
-        run: cat dist/strategy-simulation-50k.md >> "$GITHUB_STEP_SUMMARY"
+        run: cat dist/universal-target-50k.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: strategy-simulation-50k
+          name: universal-target-50k
           path: |
-            dist/strategy-simulation-50k.md
-            dist/strategy-simulation-50k.json
+            dist/universal-target-50k.md
+            dist/universal-target-50k.json
           if-no-files-found: error
           retention-days: 30
