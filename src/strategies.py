@@ -203,28 +203,102 @@ class ProfileScoringStrategy:
 
 
 class UniversalScoringStrategy:
-    name = ScoringStrategy.UNIVERSAL
-    BALANCE_PENALTY = 0.08
+    """Offense-oriented target build, rather than 50/50 PvE-PvP averaging.
 
-    def __init__(self, pve: BuildScoringStrategy, pvp: BuildScoringStrategy) -> None:
+    Exactly twelve exceptional slots are available on six [EXP] pieces.
+    The desired allocation is 2 CDT, 1 ranged and 1 melee defense, then
+    3-4 triple and 4-5 mega rolls. Goals saturate: another defense roll
+    beyond the target has no special value, and never replaces a missing
+    offensive role simply because raw defense keeps growing.
+
+    Normal-roll weights are evaluated for EACH interchangeable item, not for
+    combined totals (which otherwise conceal a missing stat on one item).
+    All bonuses are continuous, allowing greedy single-item replacements.
+    """
+
+    name = ScoringStrategy.UNIVERSAL
+    # Explicit quality targets; points are on the same scale as the combat
+    # log-score. These are preferences, not verified game-mechanic formulas.
+    CDT_PER_ROLL = 50.0
+    SIDE_DEFENSE_PER_ROLL = 95.0
+    TRIPLE_TOTAL = 95.0
+    MEGA_TOTAL = 40.0
+    NORMAL_WEIGHTS = {
+        "attack speed": 19.0,
+        "critical damage": 19.0,
+        "critical chance": 12.0,
+        "damage": 5.0,
+        "ranged damage": 5.0,
+        "lifesteal": 2.0,
+        "block chance": 2.0,
+        "health": 2.0,
+    }
+
+    def __init__(self, pve: BuildScoringStrategy) -> None:
         self.pve = pve
-        self.pvp = pvp
+
+    @staticmethod
+    def _rolls(metrics: BuildMetrics, name: str) -> tuple[float, ...]:
+        if metrics.equipment_rolls is None:
+            return (max(0.0, metrics.stats.get(name, 0.0)),)
+        return tuple(sorted(metrics.equipment_rolls.get(name, ()), reverse=True))
+
+    @staticmethod
+    def _saturation(value: float, target: float) -> float:
+        return min(max(value / target, 0.0), 1.0)
 
     def score(self, metrics: BuildMetrics) -> CombatStrategyScore:
-        pve = self.pve.score(metrics)
-        pvp = self.pvp.score(metrics)
-        average = 0.5 * (pve.total + pvp.total)
-        balance_penalty = self.BALANCE_PENALTY * abs(pve.total - pvp.total)
+        from dataclasses import replace
+        from .config import SKILLS
+
+        # PVE is the foundation, but defense beyond the requested coverage
+        # is not a reason to hoard more defensive rolls.
+        combat_stats = dict(metrics.stats)
+        for name in ("ranged defense", "melee defense"):
+            combat_stats[name] = min(combat_stats.get(name, 0.0), 100.0)
+        pve = self.pve.score(replace(metrics, stats=combat_stats))
+
+        cdt = self._rolls(metrics, "critical damage taken")
+        ranged = self._rolls(metrics, "ranged defense")
+        melee = self._rolls(metrics, "melee defense")
+        triple = self._rolls(metrics, "triple hit chance")
+        mega = self._rolls(metrics, "mega crit chance")
+
+        # Desired defensive distribution: two separate -50% CDT rolls and
+        # ONE strong roll for each damage type. Extra defense saturates.
+        defense = 65.0 * sum(self._saturation(v, self.CDT_PER_ROLL) for v in cdt[:2])
+        defense += 65.0 * self._saturation(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0
+        defense += 65.0 * self._saturation(melee[0], self.SIDE_DEFENSE_PER_ROLL) if melee else 0.0
+
+        # A third or fourth strong Triple roll reaches ~90-100; 4-5 Mega
+        # rolls reach ~40-50. Reward both total and individually good rolls.
+        triple_bonus = 110.0 * self._saturation(sum(triple), self.TRIPLE_TOTAL)
+        triple_bonus += 12.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
+        mega_bonus = 125.0 * self._saturation(sum(mega), self.MEGA_TOTAL)
+        mega_bonus += 14.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
+
+        # Rank every normal affix separately; an attack-speed+crit-damage
+        # pair in six slots earns six times the reward of the same pair in
+        # one slot. No reward for junk beyond its effect on genuine PvE DPS.
+        normal = sum(
+            weight * sum(
+                self._saturation(v, SKILLS[name].cap) ** 1.5
+                for v in self._rolls(metrics, name)
+            )
+            for name, weight in self.NORMAL_WEIGHTS.items()
+        )
+        components = (
+            ScoreComponent("pve", pve.total),
+            ScoreComponent("target_defense", defense),
+            ScoreComponent("target_triple", triple_bonus),
+            ScoreComponent("target_mega", mega_bonus),
+            ScoreComponent("normal_priorities", normal),
+        )
         return CombatStrategyScore(
-            total=average - balance_penalty,
-            components=(
-                ScoreComponent("pve", 0.5 * pve.total),
-                ScoreComponent("pvp", 0.5 * pvp.total),
-                ScoreComponent("balance", -balance_penalty),
-            ),
+            total=sum(component.score for component in components),
+            components=components,
             effective_stats=pve.effective_stats,
         )
-
 
 PVE_PROFILE = StrategyProfile(
     name=ScoringStrategy.PVE,
@@ -268,4 +342,4 @@ def strategy_for(name: ScoringStrategy) -> BuildScoringStrategy:
         return pve
     if name is ScoringStrategy.PVP:
         return pvp
-    return UniversalScoringStrategy(pve, pvp)
+    return UniversalScoringStrategy(pve)
