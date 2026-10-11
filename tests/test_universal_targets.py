@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import unittest
+from dataclasses import replace
 
 from src.config import SKILLS
 from src.domain import BuildMetrics, EquipmentSlot, ScoringStrategy
@@ -30,6 +31,10 @@ def metrics_with_rolls(rolls: dict[str, tuple[float, ...]]) -> BuildMetrics:
 def component(rolls: dict[str, tuple[float, ...]], name: str) -> float:
     score = strategy_for(ScoringStrategy.UNIVERSAL).score(metrics_with_rolls(rolls))
     return next(c.score for c in score.components if c.name == name)
+
+
+def rolls_to_item(rolls):
+    return {name: values[0] for name, values in rolls.items()}
 
 
 class UniversalTargetContract(unittest.TestCase):
@@ -103,6 +108,28 @@ class UniversalTargetContract(unittest.TestCase):
         for junk in ("melee damage", "health regen", "companion damage",
                      "companion cooldown", "double hit chance"):
             self.assertEqual(contribution(junk), 0.0, junk)
+
+    def test_attack_speed_and_crit_damage_on_same_item_are_better_than_split(self):
+        rolls = {
+            "attack speed": (36.0,),
+            "critical damage": (90.0,),
+            "critical chance": (10.0,),
+        }
+        base = metrics_with_rolls(rolls)
+        paired = replace(base, item_affixes={
+            EquipmentSlot.WEAPON: rolls_to_item(rolls),
+        })
+        split = replace(base, item_affixes={
+            EquipmentSlot.WEAPON: {"attack speed": 36.0},
+            EquipmentSlot.HELMET: {"critical damage": 90.0, "critical chance": 10.0},
+        })
+        universal = strategy_for(ScoringStrategy.UNIVERSAL)
+        self.assertGreater(universal.score(paired).total,
+                           universal.score(split).total + 18.0)
+        for mode in (ScoringStrategy.PVE, ScoringStrategy.PVP):
+            strategy = strategy_for(mode)
+            self.assertAlmostEqual(strategy.score(paired).total,
+                                   strategy.score(split).total)
 
     def test_six_individual_attack_and_critical_rolls_all_contribute(self):
         for name in ("attack speed", "critical damage", "critical chance"):
