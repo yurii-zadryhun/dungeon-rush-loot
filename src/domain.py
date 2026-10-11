@@ -107,6 +107,9 @@ class BuildMetrics:
     attack_progression: float
     health_progression: float
     stats: Mapping[str, float]
+    # Rolls from the six interchangeable items, excluding fixed Wings/Cape.
+    # Preserves per-item quality/count information lost in aggregate totals.
+    equipment_rolls: Mapping[str, tuple[float, ...]] | None = None
 
 
 @dataclass(frozen=True)
