@@ -137,9 +137,12 @@ def run_strategy(
 
 
 def simulate(iterations: int = 50_000, seed: int = 20261011,
-             fixture: Path = DEFAULT_EQUIPMENT) -> dict:
+             fixture: Path = DEFAULT_EQUIPMENT,
+             profiles: tuple[ScoringStrategy, ...] = PROFILES) -> dict:
     if iterations < 1:
         raise ValueError("iterations must be positive")
+    if not profiles or len(set(profiles)) != len(profiles):
+        raise ValueError("profiles must be non-empty and unique")
     start = EquipmentCodec.loads_json(fixture.read_text(encoding="utf-8"))
     rng = random.Random(seed)
     # Reuse EXACTLY the same 50,000 generated drops for each strategy.
@@ -153,7 +156,7 @@ def simulate(iterations: int = 50_000, seed: int = 20261011,
         "slots": {slot.value: sum(s is slot for s, _ in drops) for slot in STANDARD_SLOTS},
     }
     outcomes = [
-        run_strategy(drops, start, strategy, iterations) for strategy in PROFILES
+        run_strategy(drops, start, strategy, iterations) for strategy in profiles
     ]
     cross_scores = {
         outcome.strategy: {
@@ -186,6 +189,7 @@ def simulate(iterations: int = 50_000, seed: int = 20261011,
     return {
         "seed": seed,
         "iterations_per_strategy": iterations,
+        "profiles": [profile.value for profile in profiles],
         "random_model": {
             "rarity": "Immortal/Divine each 50%",
             "level": "uniform integer 1..130",
@@ -268,10 +272,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, default=50_000)
     parser.add_argument("--seed", type=int, default=20261011)
+    parser.add_argument(
+        "--strategies", nargs="+", choices=[p.value for p in PROFILES],
+        default=[p.value for p in PROFILES],
+        help="Limit replay to e.g. --strategies universal",
+    )
     parser.add_argument("--equipment", type=Path, default=DEFAULT_EQUIPMENT)
     parser.add_argument("--output", type=Path, default=Path("dist/strategy-simulation"))
     args = parser.parse_args()
-    data = simulate(args.iterations, args.seed, args.equipment)
+    data = simulate(
+        args.iterations, args.seed, args.equipment,
+        tuple(ScoringStrategy(value) for value in args.strategies),
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.with_suffix(".json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     args.output.with_suffix(".md").write_text(markdown_report(data) + "\n", encoding="utf-8")
