@@ -270,7 +270,7 @@ class UniversalScoringStrategy:
         # convex finish bonus makes 50 vs 47 CDT and 95 vs 87 defense matter.
         def coverage(value: float, target: float) -> float:
             ratio = self._saturation(value, target)
-            return 125.0 * ratio + 40.0 * ratio ** 8
+            return 125.0 * ratio + 110.0 * ratio ** 14
 
         defense = sum(coverage(v, self.CDT_PER_ROLL) for v in cdt[:2])
         defense += coverage(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0
@@ -280,10 +280,10 @@ class UniversalScoringStrategy:
         # rolls reach ~40-50. Reward both total and individually good rolls.
         triple_ratio = self._saturation(sum(triple), self.TRIPLE_TOTAL)
         triple_bonus = 240.0 * triple_ratio
-        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
+        triple_bonus += 25.0 * sum(self._saturation(v, 26.0) for v in triple[:4])
         mega_ratio = self._saturation(sum(mega), self.MEGA_TOTAL)
-        mega_bonus = 240.0 * mega_ratio + 30.0 * mega_ratio ** 8
-        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
+        mega_bonus = 240.0 * mega_ratio + 120.0 * mega_ratio ** 12
+        mega_bonus += 52.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
 
         # Rank every normal affix separately; an attack-speed+crit-damage
         # pair in six slots earns six times the reward of the same pair in
