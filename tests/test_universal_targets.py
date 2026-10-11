@@ -82,7 +82,7 @@ class UniversalTargetContract(unittest.TestCase):
     def test_marginal_triple_and_mega_rewards_saturate_at_desired_targets(self):
         triple = {"triple hit chance": (30.0, 30.0, 30.0)}
         added = {"triple hit chance": (30.0, 30.0, 30.0, 10.0)}
-        self.assertEqual(component(added, "target_triple"), component(triple, "target_triple"))  # 3x30 already reaches 90
+        self.assertGreater(component(added, "target_triple"), component(triple, "target_triple"))  # 3x30 is 90, preferred target 95
         peak = {"triple hit chance": (30.0, 30.0, 30.0, 30.0)}
         redundant = {"triple hit chance": (30.0, 30.0, 30.0, 30.0, 30.0)}
         self.assertEqual(component(peak, "target_triple"),
