@@ -24,8 +24,7 @@ class AndroidLootController(
     private val config: AppConfig,
 ) {
     private val stableForeground = StableForeground(config.targetPackage)
-    private var lastHandledCandidate: String? = null
-    private var lastHandledAt: Long = 0
+    private val recentlyHandledGate = CandidateRetryGate(CANDIDATE_TTL_MS)
     private var lastCheckMessage: String? = null
     private var lastCheckAt: Long = 0
     private var lastRuntimeError: String? = null
@@ -323,12 +322,10 @@ class AndroidLootController(
     }
 
     private fun recentlyHandled(candidateKey: String): Boolean =
-        candidateKey == lastHandledCandidate &&
-            android.os.SystemClock.elapsedRealtime() - lastHandledAt < CANDIDATE_TTL_MS
+        recentlyHandledGate.isSuppressed(candidateKey, SystemClock.elapsedRealtime())
 
     private fun markHandled(candidateKey: String) {
-        lastHandledCandidate = candidateKey
-        lastHandledAt = android.os.SystemClock.elapsedRealtime()
+        recentlyHandledGate.markHandled(candidateKey, SystemClock.elapsedRealtime())
     }
 
     private data class Observation(

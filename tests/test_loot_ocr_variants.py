@@ -406,7 +406,7 @@ class LootOcrVariantTest(unittest.TestCase):
 
     def test_corrupted_numeric_level_is_never_reconstructed(self):
         equipped, candidate = CARDS[EquipmentSlot.HELMET]
-        for invalid in ("06", "Lvl", "LvXXX9", "Lvl 999", "Lv??1234"):
+        for invalid in ("06", "Lvl", "LvXXXX9", "Lvl 999", "Lv??1234"):
             rows = render_card(equipped)
             rows = [invalid if row == f"Lvl {equipped.level}" else row for row in rows]
             result = json.loads(evaluate_spans_json(
