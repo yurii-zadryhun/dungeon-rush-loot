@@ -392,5 +392,30 @@ class LootOcrVariantTest(unittest.TestCase):
                 self.assertEqual(result["status"], "check_ocr")
 
 
+    def test_generic_corrupted_level_prefix_with_intact_digits(self):
+        equipped, candidate = CARDS[EquipmentSlot.HELMET]
+        for variant in (
+            "Lvl/{level}", "LvI/{level}", "Lv?{level}",
+            "Lv ..{level}", "LU|{level}", "Lv••{level}",
+        ):
+            with self.subTest(variant=variant):
+                self.assert_cards(
+                    popup_rows(equipped, candidate, level_format=variant),
+                    equipped, candidate,
+                )
+
+    def test_corrupted_numeric_level_is_never_reconstructed(self):
+        equipped, candidate = CARDS[EquipmentSlot.HELMET]
+        for invalid in ("06", "Lvl", "LvXXX9", "Lvl 999", "Lv??1234"):
+            rows = render_card(equipped)
+            rows = [invalid if row == f"Lvl {equipped.level}" else row for row in rows]
+            result = json.loads(evaluate_spans_json(
+                as_spans(rows + render_card(candidate)),
+                equipment(EquipmentSlot.HELMET, equipped), "pvp",
+            ))
+            with self.subTest(invalid=invalid):
+                self.assertEqual(result["status"], "check_ocr", result)
+                self.assertEqual(result["action"], "check")
+
 if __name__ == "__main__":
     unittest.main()

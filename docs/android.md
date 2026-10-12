@@ -129,3 +129,22 @@ CI verifies that the APK contains arm64 OpenCV/ONNX native libraries and both
 PP-OCRv6 model files; publishing also verifies that the rolling Release APK's
 SHA-256 matches the signed APK produced by that Actions run. These checks do
 not replace smoke-testing OCR on a physical Android 16 device.
+
+
+### OCR columns, level reliability and automation retry (Oct 2026)
+
+Live Android OCR first scans the left badge column (`x=0.155..0.345`) for
+exactly two rarity headings at any vertical position. Each heading anchors an
+icon-only level crop at `x=0.17..0.335` and `y=heading+0.035..0.095 * height`.
+The right text column (`x=0.345..0.875`) is OCR'd independently. If the two
+rarity anchors cannot be established, the adapter uses a full-popup pass rather
+than guessing card placement. Normal-affix counts are verified in shared Python
+from each item's parsed rarity, not duplicated in Android. Level regex tolerates
+short non-digit corruption following `Lv` but never manufactures missing digits.
+
+A rejected Android touch never marks a candidate as handled. Unconfirmed Equip
+state updates likewise remain retryable; successful actions deduplicate by
+verification key for 5 seconds using monotonic elapsed time. A CHECK result
+continues to retry (with log throttling). There is deliberately no Android
+image-hash gate skipping CHECK frames, so a visual fingerprint cannot permanently
+lock Auto out of the same popup.

@@ -32,10 +32,52 @@ class PaddleOcrAdapter(context: Context) : OcrAdapter {
     @Volatile private var closed = false
 
     override suspend fun recognize(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto> =
-        recognizeLines(frame, crop, scale = 2.0f)
+        recognizeCards(frame, crop, scale = 2.0f)
 
     override suspend fun recognizeEnhanced(frame: CapturedFrame, crop: RelativeRect): List<OcrSpanDto> =
-        recognizeLines(frame, crop, scale = 3.0f)
+        recognizeCards(frame, crop, scale = 3.0f)
+
+    /**
+     * Read rarity/level badges FIRST, independent of variable-height affixes.
+     * Then recognize the right-hand titles/stats. If the rarity geometry
+     * cannot be identified safely, fall back to ordinary full-popup OCR.
+     */
+    private suspend fun recognizeCards(
+        frame: CapturedFrame,
+        crop: RelativeRect,
+        scale: Float,
+    ): List<OcrSpanDto> {
+        val left = recognizeLines(frame, LootOcrColumns.left(crop), scale)
+        val rarities = IconLevelRecovery.rarityAnchors(left, frame.bitmap.height)
+        if (rarities.size != 2) return recognizeLines(frame, crop, scale)
+
+        val levels = rarities.flatMap { rarity ->
+            val region = IconLevelRecovery.regionForRarity(rarity, frame.bitmap.height)
+            val observed = IconLevelRecovery.eligibleLevel(
+                left.filter { (it.top + it.bottom) / 2f in
+                    region.top * frame.bitmap.height..region.bottom * frame.bitmap.height }
+            )
+            // A crop anchored to the actual rarity position is much more
+            // reliable than enlarging the complete icon column. Independent
+            // readings must NOT be made to agree by altering numeric digits.
+            val targeted = recognizeLines(frame, region, scale = 4.0f)
+            val validated = IconLevelRecovery.eligibleLevel(observed + targeted)
+            if (validated.isEmpty()) {
+                IconLevelRecovery.eligibleLevel(
+                    recognizeLines(frame, region, scale = 4.0f, lightText = true)
+                )
+            } else {
+                // Do not pass duplicate text into the row assembler. However,
+                // if independent OCR passes disagree on a numeric level, keep
+                // both observations: the Python parser rejects the conflict.
+                validated.distinctBy { it.text.trim().lowercase() }
+            }
+        }
+        val right = recognizeLines(frame, LootOcrColumns.right(crop), scale)
+        return (rarities + levels + right).sortedWith(
+            compareBy<OcrSpanDto> { it.top }.thenBy { it.left }
+        )
+    }
 
     override suspend fun recognizeIconLevels(
         frame: CapturedFrame,

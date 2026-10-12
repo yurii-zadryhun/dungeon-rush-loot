@@ -99,4 +99,48 @@ class IconLevelRecoveryTest {
         assertTrue(IconLevelRecovery.regions(lines, 100, 300).isEmpty())
         assertEquals(2, IconLevelRecovery.regions(lines, 1080, 2340).size)
     }
+    @Test
+    fun rarityAnchoringFollowsMovedCardsWithoutFixedVerticalBands() {
+        val first = span("Divine", 126, 744, 95)
+        val second = span("Immortal", 126, 1065, 105)
+        val anchors = IconLevelRecovery.rarityAnchors(listOf(second, first), 1536)
+        assertEquals(listOf(first, second), anchors)
+
+        val regions = IconLevelRecovery.regions(anchors, 709, 1536)
+        assertEquals(2, regions.size)
+        assertTrue(regions[0].top * 1536 < 855)
+        assertTrue(regions[0].bottom * 1536 > 855)
+        assertTrue(regions[1].top * 1536 < 1156)
+        assertTrue(regions[1].bottom * 1536 > 1156)
+
+        // Even with many wrapped affix lines, a moved rarity heading still
+        // produces an icon ROI directly beneath that heading.
+        val moved = span("Divine", 126, 815, 95)
+        val movedRegion = IconLevelRecovery.regionForRarity(moved, 1536)
+        assertEquals(71f, movedRegion.top * 1536 - regions[0].top * 1536, 1.0f)
+    }
+
+    @Test
+    fun columnsCoverBadgesAndNamesWithoutOverlap() {
+        val popup = RelativeRect(0.125f, 0.40f, 0.875f, 0.82f)
+        val left = LootOcrColumns.left(popup)
+        val right = LootOcrColumns.right(popup)
+        assertTrue(left.left < 126f / 709f)
+        assertTrue(left.right > 226f / 709f)
+        assertTrue(right.left < 253f / 709f)
+        assertEquals(left.right, right.left)
+        assertEquals(popup.bottom, left.bottom)
+        assertEquals(popup.bottom, right.bottom)
+    }
+
+    @Test
+    fun levelLabelAcceptsShortCorruptedSeparatorWithoutAcceptingBareNumbers() {
+        for (value in listOf("Lvl/12", "LvI•106", "LU|87", "Lv..130")) {
+            assertEquals(value, 1, IconLevelRecovery.eligibleLevel(listOf(span(value, 130, 840))).size)
+        }
+        for (invalid in listOf("06", "106", "Lvl", "+11.32% Lifesteal", "Lvl 87%")) {
+            assertTrue(invalid, IconLevelRecovery.eligibleLevel(listOf(span(invalid, 130, 840))).isEmpty())
+        }
+    }
+
 }

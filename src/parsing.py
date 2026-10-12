@@ -18,12 +18,13 @@ STAT_NUMBER_RE = re.compile(
     r"\s*(?P<suffix>%(?:\s*%)*|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
-# Lv0124 and LvU 106 were observed on the Android device. Only the
-# zero-prefixed 3-digit form is accepted; ordinary Lv0 is not a level.
+# OCR frequently corrupts the small "Lvl" prefix and its separator.
+# Require the stable "Lv"/"LU" anchor; allow 0–3 arbitrary NON-DIGIT
+# glyphs before the number. Keep digits strictly observed (no completion).
+# The historical "Lv0124" representation is accepted only when its 3-digit
+# number is complete and within the possible equipment range.
 LEVEL_MARKER_RE = re.compile(
-    # ML Kit's "LU1O6" and "LU 106" are narrow observed variants of Lvl 106.
-    # Repair O ONLY inside the explicit level token, never in affix numbers.
-    r"\b(?:lvl|lvi|lvu|lu|lv0(?=1[0-2]\d\b)|lv)\s*[-:.]?\s*(?P<level>\d{1,3}|\dO\d)\b(?!%)",
+    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu][^\d\n]{0,3})\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*%)",
     re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".

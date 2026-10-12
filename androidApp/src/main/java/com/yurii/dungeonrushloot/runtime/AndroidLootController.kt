@@ -132,18 +132,23 @@ class AndroidLootController(
                 val touched = touch.tap(target, verified.frame.bitmap.width, verified.frame.bitmap.height)
                 if (!touched) {
                     log.append(verified.event, "Gesture was rejected or cancelled by Android.")
-                    markHandled(candidateKey)
+                    // Re-observe a fresh frame at the next cycle. A rejected
+                    // gesture is NOT a consumed item or a deduplication event.
                     return
                 }
 
                 var runtimeMessage = "Touch " + verified.event.action.uppercase() + " sent."
 
-                if (verified.event.action == "equip") {
-                    runtimeMessage += handleVerifiedEquip(verified, equipmentJson)
+                val confirmed = if (verified.event.action == "equip") {
+                    val (message, stateUpdated) = handleVerifiedEquip(verified, equipmentJson)
+                    runtimeMessage += message
+                    stateUpdated
+                } else {
+                    true
                 }
 
                 log.append(verified.event, runtimeMessage)
-                markHandled(candidateKey)
+                if (confirmed) markHandled(candidateKey)
             } finally {
                 if (verified !== fresh) verified.frame.bitmap.recycle()
                 fresh.frame.bitmap.recycle()
@@ -156,26 +161,26 @@ class AndroidLootController(
     private suspend fun handleVerifiedEquip(
         verified: Observation,
         equipmentJson: String,
-    ): String {
+    ): Pair<String, Boolean> {
         val slot = verified.event.slot
         val candidate = verified.event.candidateJson
         if (slot == null || candidate == null) {
-            return " Equipment state was not updated: decision payload was incomplete."
+            return " Equipment state was not updated: decision payload was incomplete." to false
         }
 
         delay(POST_TOUCH_DELAY_MS)
         if (foreground.currentPackage() != config.targetPackage) {
-            return " Equipment state was not updated: game left foreground."
+            return " Equipment state was not updated: game left foreground." to false
         }
 
         val after = screenCapture.capture()
         return try {
             if (!ImageChangeDetector.changed(verified.frame.bitmap, after.bitmap, config.crop)) {
-                " Equipment state was not updated: UI change was not visually confirmed."
+                " Equipment state was not updated: UI change was not visually confirmed." to false
             } else {
                 val updated = bridge.replaceEquipment(equipmentJson, slot, candidate)
                 equipment.replaceRaw(updated)
-                " Equipment state updated: " + slot + "."
+                (" Equipment state updated: " + slot + ".") to true
             }
         } finally {
             after.bitmap.recycle()
@@ -319,11 +324,11 @@ class AndroidLootController(
 
     private fun recentlyHandled(candidateKey: String): Boolean =
         candidateKey == lastHandledCandidate &&
-            System.currentTimeMillis() - lastHandledAt < CANDIDATE_TTL_MS
+            android.os.SystemClock.elapsedRealtime() - lastHandledAt < CANDIDATE_TTL_MS
 
     private fun markHandled(candidateKey: String) {
         lastHandledCandidate = candidateKey
-        lastHandledAt = System.currentTimeMillis()
+        lastHandledAt = android.os.SystemClock.elapsedRealtime()
     }
 
     private data class Observation(
@@ -337,7 +342,7 @@ class AndroidLootController(
         private const val POST_TOUCH_DELAY_MS = 450L
         private const val CHECK_BACKOFF_MS = 1_500L
         private const val OCR_DIAGNOSTIC_INTERVAL_MS = 15_000L
-        private const val CANDIDATE_TTL_MS = 10_000L
+        private const val CANDIDATE_TTL_MS = 5_000L
         private const val CHECK_LOG_TTL_MS = 10_000L
         private const val RUNTIME_ERROR_TTL_MS = 15_000L
     }
