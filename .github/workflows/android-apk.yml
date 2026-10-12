@@ -70,6 +70,16 @@ jobs:
       - name: Build signed release APK
         run: gradle --no-daemon :androidApp:assembleRelease
 
+      - name: Verify packaged PaddleOCR native libraries and models
+        run: |
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          unzip -Z1 "$APK" | grep -Fx 'lib/arm64-v8a/libopencv_java4.so'
+          unzip -Z1 "$APK" | grep -Fx 'lib/arm64-v8a/libonnxruntime.so'
+          unzip -Z1 "$APK" | grep -Fx 'lib/arm64-v8a/libonnxruntime4j_jni.so'
+          unzip -Z1 "$APK" | grep -Fx 'assets/models/det/inference.onnx'
+          unzip -Z1 "$APK" | grep -Fx 'assets/models/rec/inference.onnx'
+          unzip -Z1 "$APK" | grep -Fx 'assets/models/rec/inference.yml'
+
       - name: Verify signature
         run: |
           ANDROID_SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
@@ -110,3 +120,12 @@ jobs:
             --prerelease \
             --title "Android live build" \
             --notes "Signed personal-testing APK built from android-live at $GITHUB_SHA."
+
+          # GitHub Releases and Actions must distribute identical signed APKs.
+          EXPECTED_SHA="$(sha256sum dist/DungeonRushLoot.apk | cut -d' ' -f1)"
+          RELEASE_DIGEST="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/android-live-latest" --jq '.assets[] | select(.name == "DungeonRushLoot.apk") | .digest')"
+          if [[ "$RELEASE_DIGEST" != "sha256:$EXPECTED_SHA" ]]; then
+            echo "::error::Release APK digest mismatch: $RELEASE_DIGEST vs sha256:$EXPECTED_SHA"
+            exit 1
+          fi
+          echo "Release APK SHA256 verified: $EXPECTED_SHA"

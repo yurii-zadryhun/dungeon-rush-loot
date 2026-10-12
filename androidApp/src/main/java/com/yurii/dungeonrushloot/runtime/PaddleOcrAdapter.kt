@@ -6,7 +6,6 @@ import android.graphics.Color
 import com.paddle.ocr.EngineConfig
 import com.paddle.ocr.PaddleOCR
 import com.paddle.ocr.PaddleOCRConfig
-import com.paddle.ocr.util.OpenCVUtils
 import com.yurii.dungeonrushloot.model.OcrSpanDto
 import com.yurii.dungeonrushloot.model.RelativeRect
 import kotlinx.coroutines.CoroutineScope
@@ -104,7 +103,16 @@ class PaddleOcrAdapter(context: Context) : OcrAdapter {
 
     private suspend fun initializedEngine(): PaddleOCR {
         engine?.let { return it }
-        check(OpenCVUtils.init(appContext)) { "PaddleOCR OpenCV initialization failed." }
+        // Upstream OpenCVUtils.init() catches UnsatisfiedLinkError and only
+        // returns false. Preserve the original dlopen error in exported logs.
+        try {
+            System.loadLibrary("opencv_java4")
+        } catch (error: UnsatisfiedLinkError) {
+            throw IllegalStateException(
+                "PaddleOCR could not load libopencv_java4.so: ${error.message}",
+                error,
+            )
+        }
         return PaddleOCR.create(
             context = appContext,
             config = PaddleOCRConfig(

@@ -115,3 +115,17 @@ Android Auto attempts PP-OCRv6 Small at 2.0× and retries at 3.0× when the Pyth
 ## Equipment screenshot import
 
 The current importer uses one intentionally static relative crop for the supplied 709x1536 current-item modal. Gallery decoding and PaddleOCR OCR stay in the Android layer; slot inference and item parsing are shared Python logic. A later popup detector or MediaProjection capture adapter can replace the current Android source without changing the scorer.
+
+
+### Native OpenCV failures and APK verification
+
+The app uses `com.quickbirdstudios:opencv:4.5.3.0` instead of upstream's
+`4.5.3` artifact, which its publisher warns can fail at runtime on Android.
+An OpenCV load failure preserves its original `UnsatisfiedLinkError` (including
+`dlopen` details) in exported app logs instead of obscuring it behind a
+boolean initialization result. Auto fails closed and never taps on OCR failure.
+
+CI verifies that the APK contains arm64 OpenCV/ONNX native libraries and both
+PP-OCRv6 model files; publishing also verifies that the rolling Release APK's
+SHA-256 matches the signed APK produced by that Actions run. These checks do
+not replace smoke-testing OCR on a physical Android 16 device.

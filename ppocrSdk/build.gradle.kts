@@ -21,7 +21,9 @@ android {
 
 dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.21.1")
-    implementation("com.quickbirdstudios:opencv:4.5.3")
+    // Upstream QuickBird explicitly documents runtime issues with 4.5.3
+    // and recommends the compatible artifact 4.5.3.0.
+    implementation("com.quickbirdstudios:opencv:4.5.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.core:core-ktx:1.15.0")
 }
