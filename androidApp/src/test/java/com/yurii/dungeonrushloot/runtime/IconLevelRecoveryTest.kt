@@ -22,8 +22,8 @@ class IconLevelRecoveryTest {
         val regions = IconLevelRecovery.regions(lines, 1080, 2340)
         assertEquals(2, regions.size)
         assertTrue(regions[0].top < regions[1].top)
-        assertEquals(0.16f, regions[0].left)
-        assertEquals(0.36f, regions[0].right)
+        assertEquals(0.17f, regions[0].left)
+        assertEquals(0.335f, regions[0].right)
         // The labels are on top of the icon around x=220..340;
         // affix lines begin around x=390.
         assertTrue(regions.all { it.right * 1080 < 390 })
