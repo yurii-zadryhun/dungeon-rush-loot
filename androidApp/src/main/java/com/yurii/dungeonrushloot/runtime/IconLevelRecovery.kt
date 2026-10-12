@@ -25,11 +25,11 @@ internal object IconLevelRecovery {
         """\b(?:helm(?:et)?|hat|cap|helmet|gloves?|gauntlets?|mittens?|ring|necklace|backpack|tome|quiver|shield|sword|axe|bow|crossbow|staff|dagger|mace|spear|cape|tiara|book|lyre|javelin|weapon)\b""",
         RegexOption.IGNORE_CASE,
     )
-    // Only a short, level-like prefix can introduce the digits; arbitrary
-    // non-digit OCR noise between Lv/LU and the number is tolerated.
-    // Unlabelled numbers and % affixes are not levels.
+    // This is a deliberately permissive CANDIDATE filter only. The authoritative
+    // parser in shared Python decides what level is valid. In particular, the
+    // historical "Lv0124" must not be dropped before Python can read 124.
     private val levelLabel = Regex(
-        """\bL[vu][^\d\n]{0,3}\s*(?:\d{1,3}|\dO\d)\b(?!\s*%)""",
+        """\bL[vu][^\n]{0,5}\d{1,3}\b(?!\s*%)""",
         RegexOption.IGNORE_CASE,
     )
 

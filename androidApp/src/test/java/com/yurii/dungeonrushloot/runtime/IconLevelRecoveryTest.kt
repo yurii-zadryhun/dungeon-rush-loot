@@ -135,7 +135,7 @@ class IconLevelRecoveryTest {
 
     @Test
     fun levelLabelAcceptsShortCorruptedSeparatorWithoutAcceptingBareNumbers() {
-        for (value in listOf("Lvl/12", "LvI•106", "LU|87", "Lv..130")) {
+        for (value in listOf("Lvl/12", "LvI•106", "LU|87", "Lv..130", "Lv0124")) {
             assertEquals(value, 1, IconLevelRecovery.eligibleLevel(listOf(span(value, 130, 840))).size)
         }
         for (invalid in listOf("06", "106", "Lvl", "+11.32% Lifesteal", "Lvl 87%")) {

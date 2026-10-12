@@ -24,7 +24,7 @@ STAT_NUMBER_RE = re.compile(
 # The historical "Lv0124" representation is accepted only when its 3-digit
 # number is complete and within the possible equipment range.
 LEVEL_MARKER_RE = re.compile(
-    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu][^\d\n]{0,3})\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*%)",
+    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu][^\d\n]{0,3})\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,]\d))",
     re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
@@ -216,9 +216,8 @@ class LootItemParser:
         if 1 <= level <= MAX_ITEM_LEVEL:
             return level
 
-        if 131 <= level <= 199:
-            return level - 100
-
+        # A value above the game cap is not evidence of a smaller number:
+        # never silently repair numeric OCR by subtracting 100.
         return None
 
     @staticmethod
