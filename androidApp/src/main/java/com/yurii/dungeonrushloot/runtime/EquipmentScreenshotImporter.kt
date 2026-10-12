@@ -19,7 +19,7 @@ class EquipmentScreenshotImporter(
     private val levelCrop: RelativeRect,
 ) {
     suspend fun import(uris: List<Uri>): List<EquipmentImportResult> {
-        val ocr = MlKitOcrAdapter()
+        val ocr = PaddleOcrAdapter(context)
         return try {
             uris.mapIndexed { index, uri -> importOne(index, uri, ocr) }
         } finally {
@@ -30,7 +30,7 @@ class EquipmentScreenshotImporter(
     private suspend fun importOne(
         index: Int,
         uri: Uri,
-        ocr: MlKitOcrAdapter,
+        ocr: PaddleOcrAdapter,
     ): EquipmentImportResult {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
@@ -40,18 +40,18 @@ class EquipmentScreenshotImporter(
             val frame = CapturedFrame(bitmap)
 
             // Current equipment cards are static, so we can afford two OCR
-            // scales. ML Kit occasionally misses one outlined row at one scale
+            // scales. PaddleOCR can recover different outlined rows at different scales
             // while recognizing it cleanly at another. Merge by physical row
             // and keep the richer recognition instead of passing duplicates to
             // the shared parser.
-            val main25 = recognizePass(ocr, frame, crop, index, "main_2_5x", 2.5f)
-            val main35 = recognizePass(ocr, frame, crop, index, "main_3_5x", 3.5f)
-            val spans = mergeRows(main25, main35)
+            val main20 = recognizePass(ocr, frame, crop, index, "main_2_0x", 2.0f)
+            val main30 = recognizePass(ocr, frame, crop, index, "main_3_0x", 3.0f)
+            val spans = mergeRows(main20, main30)
 
             // Level text is drawn over the icon and is much harder than the
             // card text. Run two aggressive passes over only that tiny region.
             // The shared parser can safely accept a lone integer from this crop
-            // even when ML Kit misses the outlined "Lvl" glyphs.
+            // even when OCR misses the outlined "Lvl" glyphs.
             val level35 = recognizePass(ocr, frame, levelCrop, index, "level_3_5x", 3.5f)
             val level50 = recognizePass(ocr, frame, levelCrop, index, "level_5_0x", 5.0f)
             var levelSpans = mergeRows(level35, level50)
@@ -76,8 +76,8 @@ class EquipmentScreenshotImporter(
                     .put("image_index", index)
                     .put("image_width", bitmap.width)
                     .put("image_height", bitmap.height)
-                    .put("main_2_5x", spansJson(main25))
-                    .put("main_3_5x", spansJson(main35))
+                    .put("main_2_0x", spansJson(main20))
+                    .put("main_3_0x", spansJson(main30))
                     .put("main_merged", spansJson(spans))
                     .put("level_3_5x", spansJson(level35))
                     .put("level_5_0x", spansJson(level50))
@@ -99,7 +99,7 @@ class EquipmentScreenshotImporter(
      * Python parsing fails, earlier evidence still survives in the exported log.
      */
     private suspend fun recognizePass(
-        ocr: MlKitOcrAdapter,
+        ocr: PaddleOcrAdapter,
         frame: CapturedFrame,
         bounds: RelativeRect,
         imageIndex: Int,

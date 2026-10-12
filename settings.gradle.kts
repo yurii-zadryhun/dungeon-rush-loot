@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "DungeonRushLoot"
-include(":androidApp")
+include(":androidApp", ":ppocrSdk")

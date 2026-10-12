@@ -4,6 +4,27 @@ Every push to `android-live` runs the **Android APK** workflow.
 
 A successful build publishes both an Actions artifact named `DungeonRushLoot-android-live` and a rolling prerelease named `android-live-latest`. The APK is `DungeonRushLoot.apk` and is accompanied by a SHA-256 file.
 
+## Android OCR: PaddleOCR PP-OCRv6 Small
+
+ML Kit has been removed from Android's code and Gradle dependencies.
+The official upstream [PaddleOCR Android SDK](https://github.com/PaddlePaddle/PaddleOCR/tree/dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf/deploy/ppocr-android/ppocr-sdk) is pinned to one commit (Apache-2.0);
+the ONNX detection/recognition models run entirely on-device and are included in the APK.
+
+Before a local build (also executed automatically in GitHub Actions):
+
+```bash
+bash scripts/prepare-android-ocr.sh
+gradle :androidApp:assembleRelease
+```
+
+The script retrieves the upstream SDK source and official PP-OCRv6 Small ONNX weights
+into ignored `ppocrSdk/src/`. This is a build-time step only, not a runtime download.
+The platform implementation is `PaddleOcrAdapter`; the existing `OcrAdapter`,
+shared Python parser, two-frame verification, strict validation, and fail-closed
+Auto behavior are preserved. On failed model initialization or inference, Auto
+logs an error and never taps. Real-device accuracy and latency must be verified
+separately.
+
 ## First run
 
 1. Install the APK.
@@ -19,7 +40,7 @@ Successful Equip actions are visually verified before the slot is persisted. If 
 
 ## OCR and capture
 
-The first Android adapter uses Accessibility screenshots plus the bundled ML Kit Latin text-recognition model. The scorer and parser remain Python through Chaquopy.
+The first Android adapter uses Accessibility screenshots plus on-device PP-OCRv6 Small via the official PaddleOCR Android ONNX Runtime SDK. The scorer and parser remain Python through Chaquopy.
 
 `ScreenCaptureAdapter` is deliberately independent of Accessibility so MediaProjection or another capture source can be added later.
 
@@ -34,7 +55,7 @@ The **Logs** tab is a file browser. **Application log** appears first, followed 
 
 ## Live OCR level recovery
 
-Full-popup ML Kit OCR reads the right-hand affixes well but can entirely miss
+Full-popup PaddleOCR OCR reads the right-hand affixes well but can entirely miss
 the `Lvl` labels drawn over the two item icons. When both passes cannot
 recover a level, Android performs a **targeted icon-label OCR fallback**:
 two small regions anchored on the recognized item-title rows are read in
@@ -89,8 +110,8 @@ equipment screenshots after updating so the true marker is retained.
 
 ## Live OCR parsing
 
-Android Auto attempts ML Kit Latin line OCR at 2.5× and retries 3.5× when the Python decision is CHECK. The shared Python loot parser understands separate rarity headers, wrapped item titles, lvl labels interspersed with affixes, OCR-confusable textual skill names and bounded percentage separator errors. Numeric digits are **never** Levenshtein-matched. Unknown/ambiguous titles, missing affixes, impossible rolls, signs and conflicting levels lead to CHECK/no tap. Source OCR text and parser outcomes are periodically recorded under `auto_ocr.observation` in the Application log.
+Android Auto attempts PP-OCRv6 Small at 2.0× and retries at 3.0× when the Python decision is CHECK. The shared Python loot parser understands separate rarity headers, wrapped item titles, lvl labels interspersed with affixes, OCR-confusable textual skill names and bounded percentage separator errors. Numeric digits are **never** Levenshtein-matched. Unknown/ambiguous titles, missing affixes, impossible rolls, signs and conflicting levels lead to CHECK/no tap. Source OCR text and parser outcomes are periodically recorded under `auto_ocr.observation` in the Application log.
 
 ## Equipment screenshot import
 
-The current importer uses one intentionally static relative crop for the supplied 709x1536 current-item modal. Gallery decoding and ML Kit OCR stay in the Android layer; slot inference and item parsing are shared Python logic. A later popup detector or MediaProjection capture adapter can replace the current Android source without changing the scorer.
+The current importer uses one intentionally static relative crop for the supplied 709x1536 current-item modal. Gallery decoding and PaddleOCR OCR stay in the Android layer; slot inference and item parsing are shared Python logic. A later popup detector or MediaProjection capture adapter can replace the current Android source without changing the scorer.

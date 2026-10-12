@@ -5,6 +5,8 @@ on:
     branches: [android-live]
     paths:
       - "androidApp/**"
+      - "ppocrSdk/**"
+      - "scripts/prepare-android-ocr.sh"
       - "src/**"
       # Tests are part of the release gate; a test-only commit must not leave
       # the rolling APK pointing at a prior source revision.
@@ -58,6 +60,9 @@ jobs:
 
       - name: Shared Python tests
         run: python -m unittest discover -s tests -v
+
+      - name: Prepare PaddleOCR SDK and bundled ONNX models
+        run: bash scripts/prepare-android-ocr.sh
 
       - name: Android fresh-verification unit tests
         run: gradle --no-daemon :androidApp:testReleaseUnitTest

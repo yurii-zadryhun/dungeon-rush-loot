@@ -177,3 +177,11 @@ GitHub Actions runs the unit suite, compile check, critical Ruff checks and shel
 ## Android screenshot equipment import
 
 The Android app can import the current build from 8 screenshots. The first implementation intentionally uses a fixed crop matching the current 709x1536 current-item modal, so aggregate build stats visible behind the modal are excluded from OCR. Normal slots are inferred from title signatures; cape requires a cloak/cape title plus bracketed rarity; wings require both absolute Damage and Health primary lines. A review dialog allows slot override before all eight items are persisted.
+
+
+## Android OCR
+
+The Android app now uses local **PP-OCRv6 Small ONNX** (official PaddleOCR
+Android SDK), not Google ML Kit. Run `bash scripts/prepare-android-ocr.sh`
+before local Android builds; CI does it automatically. Models are included in
+the APK, not downloaded on first launch. See [docs/android.md](docs/android.md).

@@ -15,14 +15,14 @@ import kotlinx.coroutines.launch
 class LootAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var foreground: AccessibilityForegroundAdapter
-    private var ocr: MlKitOcrAdapter? = null
+    private var ocr: PaddleOcrAdapter? = null
     private var controllerJob: Job? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         val graph = AppGraph.get(this)
         foreground = AccessibilityForegroundAdapter(this)
-        val ocrAdapter = MlKitOcrAdapter().also { ocr = it }
+        val ocrAdapter = PaddleOcrAdapter(this).also { ocr = it }
         val controller = AndroidLootController(
             screenCapture = AccessibilityScreenshotAdapter(this),
             ocr = ocrAdapter,

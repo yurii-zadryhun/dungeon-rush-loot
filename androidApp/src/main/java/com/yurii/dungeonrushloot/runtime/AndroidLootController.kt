@@ -201,7 +201,7 @@ class AndroidLootController(
                 event.message.contains("rarity/level", ignoreCase = true)
             ) {
                 // The level is painted over the item ICON, not in the affix
-                // column. ML Kit can read every affix but omit both levels.
+                // column. OCR can read every affix but omit both levels.
                 // OCR a small icon ROI, then pass the ACTUAL recognized text
                 // back through the complete Python validator. No guessed levels.
                 // Either full-popup pass can lose a title or a stat even
@@ -275,10 +275,10 @@ class AndroidLootController(
                     .put("top", config.crop.top)
                     .put("right", config.crop.right)
                     .put("bottom", config.crop.bottom))
-                .put("primary_scale", 2.5)
+                .put("primary_scale", 2.0)
                 .put("primary_spans", spansJson(primary))
                 .put("primary_result", JSONObject(initial.rawJson))
-                .put("enhanced_scale", if (enhanced == null) JSONObject.NULL else 3.5)
+                .put("enhanced_scale", if (enhanced == null) JSONObject.NULL else 3.0)
                 .put("enhanced_spans", if (enhanced == null) JSONObject.NULL else spansJson(enhanced))
                 .put("icon_level_spans", if (iconLevels == null) JSONObject.NULL else spansJson(iconLevels))
                 .put("selected_result", JSONObject(result.rawJson)),

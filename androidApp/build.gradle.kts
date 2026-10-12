@@ -92,8 +92,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
-    // Bundled model: works immediately and does not depend on a first-run model download.
-    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Local PP-OCRv6 Small models with official Android ONNX Runtime SDK.
+    implementation(project(":ppocrSdk"))
 
     testImplementation("junit:junit:4.13.2")
     // Android's org.json classes have no working implementations in JVM unit tests.
