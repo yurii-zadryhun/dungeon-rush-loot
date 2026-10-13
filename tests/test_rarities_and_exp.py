@@ -318,7 +318,7 @@ class ExactRarityAffixRulesTest(unittest.TestCase):
 
         # But any damaged OCR stat that is still visible in the raw spans
         # must produce CHECK rather than being discarded.
-        damaged = missing + ["+2O.00% Triple Hit Chance"]
+        damaged = missing + ["+2Q.00% Triple Hit Chance"]
         checked = json.loads(evaluate_spans_json(spans(damaged), json.dumps(gear), "pvp"))
         self.assertEqual(checked["status"], "check_ocr", checked)
         self.assertEqual(checked["action"], "check")

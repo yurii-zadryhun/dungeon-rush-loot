@@ -341,7 +341,7 @@ class LootOcrVariantTest(unittest.TestCase):
     def test_bad_numbers_or_missing_required_fields_fail_closed(self):
         equipped, candidate = CARDS[EquipmentSlot.HELMET]
         fixtures = {
-            "unreadable digits": "+1O.82% Critical Chance",
+            "unrecognized glyph": "+1Q.82% Critical Chance",
             "out of bounds": "+70.82% Critical Chance",
             "wrong sign": "-10.82% Critical Chance",
             "no leading sign or percent": "10.82 Critical Chance",
