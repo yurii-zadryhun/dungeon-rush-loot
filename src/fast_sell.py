@@ -75,6 +75,21 @@ def orange_rows(image: Image.Image, region: tuple[int, int, int, int]) -> tuple[
     return tuple(groups)
 
 
+def _has_orange_text_pixels(
+    image: Image.Image, region: tuple[int, int, int, int],
+) -> bool:
+    """Guard bands must detect even a *partial* truncated colored line."""
+    pixels = np.asarray(image.crop(region).convert("RGB"), dtype=np.int16)
+    if pixels.size == 0:
+        return False
+    red, green, blue = pixels[:, :, 0], pixels[:, :, 1], pixels[:, :, 2]
+    orange = (
+        (red > 145) & (green > 70) & (blue < 175)
+        & (red > green * 1.12) & (green > blue * 1.10)
+    )
+    return bool(np.any(orange.sum(axis=1) >= max(7, (region[2] - region[0]) // 90)))
+
+
 class FastExceptionalSellProbe:
     def __init__(self, engine: PaddleOcrEngine, scale: float = 2.0) -> None:
         self.engine = engine
@@ -109,7 +124,7 @@ class FastExceptionalSellProbe:
                      candidate_region[2], candidate_region[1])
         guard_bottom = (candidate_region[0], candidate_region[3],
                         candidate_region[2], int(BOTTOM_GUARD_END * height))
-        if orange_rows(image, guard_top) or orange_rows(image, guard_bottom):
+        if _has_orange_text_pixels(image, guard_top) or _has_orange_text_pixels(image, guard_bottom):
             return None
 
         lines = self._ocr(image, candidate_region)
@@ -120,10 +135,16 @@ class FastExceptionalSellProbe:
                 index for index, (top, bottom) in enumerate(bands)
                 if min(line.box.bottom, bottom + 7) - max(line.box.top, top - 7) >= 5
             ]
+            # A single tall OCR box spanning two distinct orange rows does
+            # not prove that two Exceptional affixes were fully recognized.
+            if len(matched) > 1:
+                return None
             if matched:
+                if matched[0] in matched_bands:
+                    return None
                 colored_lines.append(line)
-                matched_bands.update(matched)
-        if len(matched_bands) != len(bands) or not colored_lines:
+                matched_bands.add(matched[0])
+        if len(matched_bands) != len(bands) or len(colored_lines) != len(bands):
             return None
         parsed: list[ParsedStat] = []
         cursor = 0
