@@ -8,6 +8,7 @@ from .ocr import PaddleOcrEngine
 from .parsing import LootCardTitleCountError
 from .scoring import ItemComparer
 from .vision import fixed_ocr_crop, preprocess_popup
+from .ui_geometry import LOOT_BADGE_CROP, LOOT_TEXT_CROP
 
 
 class LootAnalyzer:
@@ -20,7 +21,7 @@ class LootAnalyzer:
         self.show_ocr = show_ocr
 
     def analyze(self, image: Image.Image) -> AnalysisArtifacts:
-        popup_box, spans, raw = self._ocr_popup(image.convert("RGB"))
+        popup_box, spans, diagnostics = self._ocr_popup(image.convert("RGB"))
         lines = tuple(self.decision_engine.lines.assemble(spans))
         try:
             result = self.decision_engine.decide_lines(lines)
@@ -29,11 +30,7 @@ class LootAnalyzer:
         except ValueError as exc:
             comparison = Comparison(ComparisonStatus.CHECK_OCR, Action.CHECK, None, None, None, None, str(exc))
             result = DecisionResult(comparison, lines, (), ())
-        left, top, _, _ = popup_box
-        diagnostic = OcrPass(
-            "popup", Box(*popup_box), self.scale,
-            tuple(OcrSpan(span.text, span.score, span.box.shifted_scaled(left, top, self.scale)) for span in raw),
-        )
+
         if self.show_ocr:
             self._print_ocr(result.popup_lines)
         return AnalysisArtifacts(
@@ -42,13 +39,37 @@ class LootAnalyzer:
             result.popup_lines,
             result.equipped_lines,
             result.candidate_lines,
-            (diagnostic,),
+            diagnostics,
         )
 
     def _ocr_popup(self, image: Image.Image):
         popup_box = fixed_ocr_crop(image.width, image.height)
-        spans, raw = self.engine.recognize_with_diagnostics(preprocess_popup(image.crop(popup_box), self.scale))
-        return popup_box, spans, raw
+        popup_left, popup_top, _, _ = popup_box
+        combined: list[OcrSpan] = []
+        passes: list[OcrPass] = []
+        for kind, crop in (("badge", LOOT_BADGE_CROP), ("affixes", LOOT_TEXT_CROP)):
+            region = crop.pixels(image.size)
+            accepted, raw = self.engine.recognize_with_diagnostics(
+                preprocess_popup(image.crop(region), self.scale)
+            )
+            # The shared assembler expects popup-local, scaled coordinates.
+            # The diagnostics instead retain original screenshot pixels.
+            dx = (region[0] - popup_left) * self.scale
+            dy = (region[1] - popup_top) * self.scale
+            combined.extend(
+                OcrSpan(span.text, span.score, Box(
+                    span.box.left + dx, span.box.top + dy,
+                    span.box.right + dx, span.box.bottom + dy,
+                ))
+                for span in accepted
+            )
+            passes.append(OcrPass(
+                kind, Box(*region), self.scale,
+                tuple(OcrSpan(s.text, s.score, s.box.shifted_scaled(
+                    region[0], region[1], self.scale,
+                )) for s in raw),
+            ))
+        return popup_box, combined, tuple(passes)
 
     @staticmethod
     def _print_ocr(lines) -> None:

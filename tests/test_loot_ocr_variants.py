@@ -371,19 +371,52 @@ class LootOcrVariantTest(unittest.TestCase):
         self.assertLessEqual(recognized[0].confidence, 0.90)
 
         for raw in (
-            "+1O.82% Critical Chance",       # integer O is not a numeral
-            "+15.OO% Double Hit Chance",     # two missing fractional digits
+            "+9O.82% Critical Chance",       # above cap
+            "+15.O2% Chocolate Croissant", # unknown skill name
             "15.O2% Double Hit Chance",      # no sign
             "+15.O2 Double Hit Chance",      # no percent
             "+50.O2% Double Hit Chance",     # above per-affix cap
             "+15.O2% Chocolate Croissant",   # unknown label
-            "+15.O2% Double Hit Chanc?",     # repaired numeral + fuzzy label
+            "+15.O2% Double Hit Chanc?",     # fuzzy label is not enough
             "+15.O24% Double Hit Chance",    # extra digit is not discarded
         ):
             with self.subTest(raw=raw):
                 self.assertEqual(
                     parser._stats([OcrLine(raw, 0.99, Box(0, 0, 320, 30))]), [],
                 )
+
+    def test_contextual_ocr_digit_recovery_in_signed_percentage(self):
+        parser = LootItemParser()
+        cases = (
+            ("+1O.82% Critical Chance", "critical chance", 10.82),
+            ("+15.O2% Double Hit Chance", "double hit chance", 15.02),
+            ("+IS.O2% Double Hit Chance", "double hit chance", 15.02),
+            ("+I2.5S% Lifesteal", "lifesteal", 12.55),
+            ("-5I.74% Critical Damage Taken", "critical damage taken", -51.74),
+            ("+8,9O% Critical Damage", "critical damage", 8.90),
+        )
+        for raw, name, expected in cases:
+            with self.subTest(raw=raw):
+                stats = parser._stats([OcrLine(raw, 0.99, Box(0, 0, 400, 30))])
+                self.assertEqual(len(stats), 1)
+                self.assertEqual(stats[0].name, name)
+                self.assertAlmostEqual(stats[0].value, expected)
+                self.assertEqual(stats[0].raw_text, raw)
+                self.assertLessEqual(stats[0].confidence, 0.90)
+
+        for invalid in (
+            "+IS.OO% Double Hit Chance",   # many uncertain glyphs; still in cap?
+            "+1O.82 Critical Chance",     # no percent
+            "1O.82% Critical Chance",     # no explicit sign
+            "+1O.82% Chocolate Croissant",
+            "+1O.82% Critical Chanc?",   # fuzzy label not enough
+            "+9O.82% Critical Chance",   # above per-affix cap
+            "+1O.823% Critical Chance",  # extra digit
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(parser._stats([
+                    OcrLine(invalid, 0.99, Box(0, 0, 400, 30)),
+                ]), [])
 
     def test_conflicting_level_or_missing_title_fails_closed(self):
         equipped, candidate = CARDS[EquipmentSlot.HELMET]

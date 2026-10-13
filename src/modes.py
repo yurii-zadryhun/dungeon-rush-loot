@@ -125,6 +125,22 @@ class AutoClickMode:
         if self.device.foreground_package() != TARGET_PACKAGE:
             return None
         image = self.device.screenshot()
+        if image.size != context.image.size:
+            return None
+        # The candidate card contains all item rarity/level/affix pixels.
+        # When its actual pixels remain stable, rerunning a slow neural OCR
+        # cannot improve verification. If pixels changed or the visual test
+        # is uncertain, fall back to a full new OCR + semantic comparison.
+        region = source_region_for_lines(
+            context.artifacts.candidate_lines,
+            context.artifacts.popup_box,
+            self.scale,
+            image.size,
+        )
+        before = visual_signature(context.image, region)
+        after = visual_signature(image, region)
+        if visual_difference(before, after) <= 0.005:
+            return DecisionContext(image, context.artifacts, context.candidate_hash)
         try:
             artifacts = self.analyzer.analyze(image)
         except Exception:

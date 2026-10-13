@@ -62,3 +62,10 @@ EQUIPMENT_IMPORT_CROP = RelativeRect(0.075, 0.425, 0.925, 0.705)
 # Restrict the level passes to the icon footer itself, excluding the detailed
 # artwork above it. Calibrated against the eight 1080x2340 source screenshots.
 EQUIPMENT_IMPORT_LEVEL_CROP = RelativeRect(0.135, 0.545, 0.325, 0.585)
+
+# Badge/artwork footer and right-hand stat lines have independent OCR crops,
+# spanning the entire variable-height popup. No fixed Y for item levels.
+# The gap prevents icon artwork from contaminating affix recognition.
+LOOT_BADGE_CROP = RelativeRect(0.155, OCR_CROP_TOP, 0.345, OCR_CROP_BOTTOM)
+LOOT_TEXT_CROP = RelativeRect(0.345, OCR_CROP_TOP, OCR_CROP_RIGHT, OCR_CROP_BOTTOM)
+
