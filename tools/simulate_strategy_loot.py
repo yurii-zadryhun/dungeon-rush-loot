@@ -25,6 +25,7 @@ from src.domain import EquipmentSlot, ParsedItem, ParsedStat, ScoringStrategy
 from src.equipment import EquipmentCodec, EquipmentLoadout
 from src.scoring import BuildScorer
 from src.universal_opportunity import UniversalOpportunityPolicy
+from src.exceptional_gate import weak_exceptional_candidate
 from src.strategies import strategy_for
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -114,8 +115,9 @@ def run_strategy(
             baseline_cache[slot] = scorer.score(loadout, protected_slot=slot).total
         next_loadout = loadout.with_replacement(slot, candidate)
         candidate_score = scorer.score(next_loadout, protected_slot=slot).total
-        accept = candidate_score > baseline_cache[slot] + 0.01
-        if not accept and opportunity is not None:
+        weak = strategy is ScoringStrategy.UNIVERSAL and weak_exceptional_candidate(candidate.stats)
+        accept = not weak and candidate_score > baseline_cache[slot] + 0.01
+        if not accept and not weak and opportunity is not None:
             accept = opportunity.assess(
                 loadout, slot, candidate, scorer,
                 baseline_cache[slot], candidate_score,

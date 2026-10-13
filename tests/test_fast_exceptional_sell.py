@@ -30,9 +30,11 @@ def screen(bands=(1631,), hidden=False):
 
 
 class FakeOcr:
-    def __init__(self, stats=("+8.35% Thorns",), rarities=("Divine", "Immortal")):
+    def __init__(self, stats=("+8.35% Thorns",), rarities=("Divine", "Immortal"),
+                 positions=(1631, 1659)):
         self.stats = stats
         self.rarities = rarities
+        self.positions = positions
         self.calls = []
 
     def recognize(self, crop):
@@ -48,7 +50,7 @@ class FakeOcr:
         y0 = int(.748*H)
         return [
             OcrSpan(text, 0.99, Box(45, (y-y0)*2, 900, (y+19-y0)*2))
-            for text, y in zip(self.stats, (1631, 1659))
+            for text, y in zip(self.stats, self.positions)
         ]
 
 
@@ -69,9 +71,12 @@ class FastExceptionalTests(unittest.TestCase):
         self.assertEqual(len(model.calls), 2)
 
     def test_two_middling_good_rolls_meeting_cap_ratio_require_full_analysis(self):
-        model = FakeOcr(("+15.00% Triple Hit Chance", "+5.00% Mega Crit Chance"))
+        model = FakeOcr(
+            ("+15.00% Triple Hit Chance", "+5.00% Mega Crit Chance"),
+            positions=(1575, 1631),
+        )
         self.assertIsNone(
-            FastExceptionalSellProbe(model).probe(screen((1631, 1659)))
+            FastExceptionalSellProbe(model).probe(screen((1575, 1631)))
         )
         # No badge OCR needed: the useful exceptional threshold already passed.
         self.assertEqual(len(model.calls), 1)
