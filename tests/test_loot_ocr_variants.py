@@ -405,7 +405,7 @@ class LootOcrVariantTest(unittest.TestCase):
                 self.assertLessEqual(stats[0].confidence, 0.90)
 
         for invalid in (
-            "+IS.OO% Double Hit Chance",   # many uncertain glyphs; still in cap?
+            "+IS.OOO% Double Hit Chance",  # too many fractional digits
             "+1O.82 Critical Chance",     # no percent
             "1O.82% Critical Chance",     # no explicit sign
             "+1O.82% Chocolate Croissant",

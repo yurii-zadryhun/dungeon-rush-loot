@@ -24,6 +24,7 @@ from src.config import EXCEPTIONAL_SKILLS, MAX_ITEM_LEVEL, RARITY_TIERS, SKILLS
 from src.domain import EquipmentSlot, ParsedItem, ParsedStat, ScoringStrategy
 from src.equipment import EquipmentCodec, EquipmentLoadout
 from src.scoring import BuildScorer
+from src.universal_opportunity import UniversalOpportunityPolicy
 from src.strategies import strategy_for
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,8 @@ def run_strategy(
     start: EquipmentLoadout,
     strategy: ScoringStrategy,
     iterations: int,
+    *,
+    universal_lookahead: bool = True,
 ) -> SimulationResult:
     scorer = BuildScorer(strategy_for(strategy))
     loadout = start
@@ -98,6 +101,7 @@ def run_strategy(
     rejected = 0
     by_slot: Counter[str] = Counter()
     baseline_cache: dict[EquipmentSlot, float] = {}
+    opportunity = UniversalOpportunityPolicy() if strategy is ScoringStrategy.UNIVERSAL and universal_lookahead else None
 
     # This is exactly the same > 0.01 build-score comparison as ItemComparer:
     # current and candidate are scored with protected_slot=slot, including
@@ -110,7 +114,13 @@ def run_strategy(
             baseline_cache[slot] = scorer.score(loadout, protected_slot=slot).total
         next_loadout = loadout.with_replacement(slot, candidate)
         candidate_score = scorer.score(next_loadout, protected_slot=slot).total
-        if candidate_score > baseline_cache[slot] + 0.01:
+        accept = candidate_score > baseline_cache[slot] + 0.01
+        if not accept and opportunity is not None:
+            accept = opportunity.assess(
+                loadout, slot, candidate, scorer,
+                baseline_cache[slot], candidate_score,
+            ) is not None
+        if accept:
             loadout = next_loadout
             equipped += 1
             by_slot[slot.value] += 1
@@ -233,7 +243,7 @@ def simulate(iterations: int = 50_000, seed: int = 20261011,
             "rolls": "3 unique normal + 1 or 2 unique exceptional",
             "values": "uniform discrete hundredths (0.01..configured cap)",
             "auto_melee": "no melee weapons; only ranged Tyrant Staff",
-            "decision_rule": "production build scorer with protected slot; EQUIP iff delta > 0.01",
+            "decision_rule": "production scorer with protected slot; Universal also tries bounded one-slot counterfactual",
         },
         "generated": generated,
         "cross_profile_scores": cross_scores,

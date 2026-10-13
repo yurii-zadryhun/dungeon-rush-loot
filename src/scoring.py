@@ -32,6 +32,7 @@ from .equipment import EquipmentLoadout, EquipmentRepository, EquipmentStateErro
 from .affix_rules import unparsed_affix_lines, validate_affixes
 from .game_catalog import match_standard_item
 from .strategies import BuildScoringStrategy
+from .universal_opportunity import UniversalOpportunityPolicy
 from .text import canonical_name
 
 FLEXIBILITY_WEIGHT = 0.12
@@ -211,6 +212,23 @@ class ItemComparer:
         current_score = self.scorer.score(loadout, protected_slot=slot)
         candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
         action = Action.EQUIP if candidate_score.total > current_score.total + 0.01 else Action.SELL
+        message = (
+            f"{self.scorer.strategy.name.value.upper()} build-aware scoring with "
+            "caps, interactions and replacement flexibility."
+        )
+        if action is Action.SELL and self.scorer.strategy.name.value == "universal":
+            opportunity = UniversalOpportunityPolicy().assess(
+                loadout, slot, candidate, self.scorer, current_score.total,
+                candidate_score.total,
+            )
+            if opportunity is not None:
+                action = Action.EQUIP
+                message = (
+                    f"UNIVERSAL opportunity: now {opportunity.immediate_delta:+.1f}; "
+                    f"after replacing {opportunity.conflict_slot.value} "
+                    f"{opportunity.future_delta:+.1f}; "
+                    f"rare-roll quality {opportunity.rare_quality_delta:+.1f}."
+                )
         return Comparison(
             status=ComparisonStatus.OK,
             action=action,
@@ -218,7 +236,7 @@ class ItemComparer:
             equipped=equipped,
             candidate_score=candidate_score,
             equipped_score=current_score,
-            message=f"{self.scorer.strategy.name.value.upper()} build-aware scoring with caps, interactions and replacement flexibility.",
+            message=message,
             equipment_slot=slot,
         )
 

@@ -36,6 +36,8 @@ class ComparisonFormatter:
         equipped = round(comparison.equipped_score.total)
         candidate = round(comparison.candidate_score.total)
         if comparison.action is Action.EQUIP:
+            if candidate < equipped:
+                return f"🟢 EQUIP · OPPORTUNITY ({equipped} > {candidate} now)"
             return f"🟢 EQUIP ({equipped} < {candidate})"
         return f"🔴 SELL ({equipped} > {candidate})" if equipped != candidate else f"🔴 SELL ({equipped} ≥ {candidate})"
 
