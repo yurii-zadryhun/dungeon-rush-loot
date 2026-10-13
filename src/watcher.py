@@ -47,7 +47,7 @@ class LootWatcher:
         self.state = WatchState()
         # The same full Python comparer remains authoritative for any
         # promising/uncertain item. This optional cheap SELL gate is auto-only.
-        strategy = self.analyzer.decision_engine.comparer.scorer
+        strategy = getattr(self.analyzer.decision_engine.comparer, "scorer", None)
         self.quick_probe = (
             FastExceptionalSellProbe(self.analyzer.engine, scale=self.scale)
             if isinstance(mode, AutoClickMode)
@@ -92,7 +92,14 @@ class LootWatcher:
         if self._unchanged(image):
             return
         if self.quick_probe is not None:
-            evidence = self.quick_probe.probe(image)
+            try:
+                evidence = self.quick_probe.probe(image)
+            except Exception as exc:
+                # Any uncertain fast probe must fall back to the proven full
+                # OCR/parser path, never authorize SELL based on partial data.
+                if self.presenter.verbose:
+                    self.presenter.warning(f"Fast OCR unavailable; full OCR fallback: {exc}")
+                evidence = None
             if evidence is not None and self.mode.quick_sell(image, evidence.crop):
                 names = ", ".join(f"{s.name} {abs(s.value):.2f}%" for s in evidence.stats)
                 comparison = Comparison(
