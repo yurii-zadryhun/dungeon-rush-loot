@@ -222,3 +222,23 @@ guarantees the exact endgame build: immediate irreversible EQUIP/SELL
 decisions are a greedy online policy, not a hindsight optimizer.
 
 To verify locally: `python -m unittest discover -s tests -v`.
+
+## Single decision engine (Desktop + Android)
+
+`master` is now the sole active development branch. Desktop screenshot
+capture/Paddle OCR and Android capture/Paddle OCR supply observations to the
+**same Python** `LootDecisionEngine → ItemComparer → BuildScorer`. Android's
+Chaquopy source directory `androidApp/src/main/python/src` is a symlink to
+the repository's `src/`, not a fork or duplicate of the scorer. Tests replay
+actual captured 2026-10-13 item comparisons through both entry points and
+verify identical actions, component deltas and values.
+
+Desktop prints `Δ points (candidate − equipped)` broken into PvE,
+target Defense/Triple/Mega, Normal skills and Flexibility. **`Σ` denotes
+a total percentage for that stat in the build, not scoring points.**
+A full item swap may correctly lose to a weak +4% Mega Crit if it sacrifices
+a vital −50% CDT and a +24% Triple roll, even though standalone Mega Crit
+is far more valuable than Companion Damage.
+
+Rolling Android builds now come from `master`:
+`https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/tag/master-latest`.

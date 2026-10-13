@@ -2,7 +2,7 @@ name: Universal target Monte Carlo
 
 on:
   push:
-    branches: [android-live]
+    branches: [master]
     paths:
       - "tools/simulate_strategy_loot.py"
       - "src/strategies.py"

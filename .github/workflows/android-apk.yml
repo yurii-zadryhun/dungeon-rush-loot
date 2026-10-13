@@ -2,7 +2,7 @@ name: Android APK
 
 on:
   push:
-    branches: [android-live]
+    branches: [master]
     paths:
       - "androidApp/**"
       - "ppocrSdk/**"
@@ -21,7 +21,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-live-apk
+  group: master-apk
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANDROID_VERSION_CODE: ${{ github.run_number }}
-      ANDROID_VERSION_NAME: 0.1.${{ github.run_number }}-android-live
+      ANDROID_VERSION_NAME: 0.1.${{ github.run_number }}-master
 
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +94,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DungeonRushLoot-android-live
+          name: DungeonRushLoot-master
           path: |
             dist/DungeonRushLoot.apk
             dist/DungeonRushLoot.apk.sha256
@@ -102,28 +102,28 @@ jobs:
           retention-days: 30
 
       - name: Publish rolling prerelease
-        if: github.ref == 'refs/heads/android-live'
+        if: github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          LATEST_SHA="$(git ls-remote origin refs/heads/android-live | cut -f1)"
+          LATEST_SHA="$(git ls-remote origin refs/heads/master | cut -f1)"
           if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
-            echo "Skipping rolling release: $GITHUB_SHA is not current android-live head ($LATEST_SHA)."
+            echo "Skipping rolling release: $GITHUB_SHA is not current master head ($LATEST_SHA)."
             exit 0
           fi
 
-          gh release delete android-live-latest --cleanup-tag --yes || true
-          gh release create android-live-latest \
+          gh release delete master-latest --cleanup-tag --yes || true
+          gh release create master-latest \
             dist/DungeonRushLoot.apk \
             dist/DungeonRushLoot.apk.sha256 \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "Android live build" \
-            --notes "Signed personal-testing APK built from android-live at $GITHUB_SHA."
+            --title "Android master build" \
+            --notes "Signed personal-testing APK built from master at $GITHUB_SHA."
 
           # GitHub Releases and Actions must distribute identical signed APKs.
           EXPECTED_SHA="$(sha256sum dist/DungeonRushLoot.apk | cut -d' ' -f1)"
-          RELEASE_DIGEST="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/android-live-latest" --jq '.assets[] | select(.name == "DungeonRushLoot.apk") | .digest')"
+          RELEASE_DIGEST="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/master-latest" --jq '.assets[] | select(.name == "DungeonRushLoot.apk") | .digest')"
           if [[ "$RELEASE_DIGEST" != "sha256:$EXPECTED_SHA" ]]; then
             echo "::error::Release APK digest mismatch: $RELEASE_DIGEST vs sha256:$EXPECTED_SHA"
             exit 1

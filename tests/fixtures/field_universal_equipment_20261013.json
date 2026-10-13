@@ -1,0 +1,100 @@
+{
+  "weapon": {
+    "title": "Immortal [EXP] Void Javelin [Range]",
+    "rarity": "Immortal",
+    "level": 29,
+    "stats": {
+      "lifesteal": 2.51,
+      "companion cooldown": -4.73,
+      "attack speed": 23.14,
+      "ranged defense": 90.07
+    }
+  },
+  "helmet": {
+    "title": "Divine [EXP] Celestial Helmet",
+    "rarity": "Divine",
+    "level": 87,
+    "stats": {
+      "lifesteal": 18.92,
+      "ranged damage": 1.98,
+      "critical chance": 10.82,
+      "melee defense": 67.63,
+      "mega crit chance": 6.54
+    }
+  },
+  "backpack": {
+    "title": "Immortal [EXP] Crimson Backpack",
+    "rarity": "Immortal",
+    "level": 88,
+    "stats": {
+      "critical damage": 36.4,
+      "critical chance": 4.86,
+      "attack speed": 32.05,
+      "melee defense": 94.33
+    }
+  },
+  "gloves": {
+    "title": "Immortal [EXP] Crimson Gloves",
+    "rarity": "Immortal",
+    "level": 124,
+    "stats": {
+      "lifesteal": 4.5,
+      "ranged damage": 7.32,
+      "melee damage": 19.3,
+      "critical damage taken": -51.74,
+      "triple hit chance": 24.12
+    }
+  },
+  "necklace": {
+    "title": "Immortal [EXP] Dread Necklace",
+    "rarity": "Immortal",
+    "level": 12,
+    "stats": {
+      "lifesteal": 11.32,
+      "companion cooldown": -3.66,
+      "critical damage": 46.04,
+      "triple hit chance": 24.44,
+      "critical damage taken": -44.78
+    }
+  },
+  "ring": {
+    "title": "Immortal [EXP] Void Ring",
+    "rarity": "Immortal",
+    "level": 72,
+    "stats": {
+      "critical chance": 7.13,
+      "critical damage": 77.71,
+      "melee damage": 22.19,
+      "mega crit chance": 7.58
+    }
+  },
+  "wings": {
+    "title": "Eternal",
+    "rarity": "Divine",
+    "level": 100,
+    "primary": {
+      "attack": 2250000,
+      "health": 7500000
+    },
+    "stats": {
+      "ranged damage": 13.13,
+      "critical damage": 79.1,
+      "damage": 13.19,
+      "critical chance": 11.06,
+      "attack speed": 30.5
+    }
+  },
+  "cape": {
+    "title": "Divine Cloak",
+    "rarity": "Mythic",
+    "level": 31,
+    "intrinsic_stats": {
+      "damage": 80,
+      "health": 80
+    },
+    "stats": {
+      "critical damage": 33.25,
+      "critical chance": 8.89
+    }
+  }
+}

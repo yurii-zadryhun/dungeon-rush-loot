@@ -10,6 +10,7 @@ from rich.text import Text
 from .config import EXCEPTIONAL_SKILLS
 from .domain import Action, BuildScore, Comparison, ComparisonStatus, ParsedStat
 from .equipment import beneficial_value
+from .events import score_delta_payload
 from .text import canonical_name
 
 
@@ -105,6 +106,35 @@ class ConsolePresenter:
             right = self._affix(candidate_item.stats[index], candidate_score) if index < len(candidate_item.stats) else Text("")
             table.add_row(left, right)
         self.console.print(table)
+        self._score_breakdown(comparison)
+
+    def _score_breakdown(self, comparison: Comparison) -> None:
+        delta = score_delta_payload(comparison)
+        if delta is None:
+            return
+        labels = {
+            "pve": "PvE",
+            "target_defense": "Defense",
+            "target_triple": "Triple",
+            "target_mega": "Mega",
+            "normal_priorities": "Normals",
+            "flexibility": "Flex",
+            "offense": "Offense",
+            "defense": "Defense",
+            "sustain": "Sustain",
+            "utility": "Utility",
+            "balance": "Balance",
+        }
+        parts = delta["components"]
+        summary = " · ".join(
+            f"{labels.get(name, name)} {change:+.1f}"
+            for name, change in parts.items()
+        )
+        self.console.print(
+            f"[dim]Δ points (candidate − equipped): {summary}"
+            f" = {delta['total']:+.1f}[/dim]"
+        )
+        self.console.print("[dim]Σ means total build stat %, NOT score points.[/dim]")
 
     @staticmethod
     def _header(label, item, score: BuildScore) -> str:

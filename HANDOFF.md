@@ -1,5 +1,16 @@
 # Chat handoff / project context
 
+> **Current branch policy (2026-10-13):** `master` is now the sole
+> development branch for both Desktop and Android. The earlier `android-live`
+> notes below are historical; new changes and rolling Android builds come
+> from `master`. Desktop and Android both use `src/core.py`,
+> `src/scoring.py` and `src/strategies.py` for decisions.
+>
+> The score table's `Σ` is an aggregate **stat percentage**, not points.
+> A legal full-item swap's marginal score is decomposed into PvE, defense,
+> Triple, Mega, normal and flexibility using one shared score-delta helper.
+
+
 This file exists so a fresh ChatGPT chat can resume the work without reconstructing the history.
 
 ## Working agreement

@@ -38,6 +38,28 @@ def item_payload(item: ParsedItem | None) -> dict[str, Any] | None:
     }
 
 
+def score_delta_payload(comparison: Comparison) -> dict[str, Any] | None:
+    """Exact candidate-minus-equipped score contributions from ONE shared scorer.
+
+    A component delta measures the entire proposed item swap, NOT a claimed
+    standalone score of any one affix. Exposed identically to desktop UI and
+    Android decision events to prevent misreading aggregate stat percentages.
+    """
+    equipped = comparison.equipped_score
+    candidate = comparison.candidate_score
+    if equipped is None or candidate is None:
+        return None
+    before = {part.name: part.score for part in equipped.components}
+    after = {part.name: part.score for part in candidate.components}
+    names = dict.fromkeys((*before, *after))
+    components = {name: after.get(name, 0.0) - before.get(name, 0.0)
+                  for name in names}
+    return {
+        "total": candidate.total - equipped.total,
+        "components": components,
+    }
+
+
 def comparison_event(
     comparison: Comparison,
     *,
@@ -59,6 +81,7 @@ def comparison_event(
         "candidate": item_payload(comparison.candidate),
         "equipped_score": _score_payload(comparison.equipped_score),
         "candidate_score": _score_payload(comparison.candidate_score),
+        "score_delta": score_delta_payload(comparison),
         "ocr_lines": [
             {
                 "text": line.text,

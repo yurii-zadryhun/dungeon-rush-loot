@@ -2,7 +2,7 @@ name: Offline Universal 50k feasibility
 
 on:
   push:
-    branches: [android-live]
+    branches: [master]
     paths:
       - "tools/offline_universal_benchmark.py"
       - "tests/test_offline_universal_benchmark.py"
