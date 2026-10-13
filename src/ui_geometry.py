@@ -70,9 +70,9 @@ LOOT_BADGE_CROP = RelativeRect(0.155, OCR_CROP_TOP, 0.345, OCR_CROP_BOTTOM)
 LOOT_TEXT_CROP = RelativeRect(0.345, OCR_CROP_TOP, OCR_CROP_RIGHT, OCR_CROP_BOTTOM)
 
 
-# Candidate's orange exceptional affixes are pinned to the lower-right
-# end of the popup. Calibrated from 945x2048 live screenshot: Y≈1532
-# lies between "+34.83% Melee Damage" and "+3.67% Block Chance".
-# Before an irreversible fast SELL, color scanlines verify that all
-# exceptional rows fit entirely inside these boundaries.
+# Candidate footer: up to three affix text rows, including wrapped CDT.
 LOOT_EXCEPTIONAL_CROP = RelativeRect(0.345, 0.748, 0.875, 0.820)
+
+# Confirm label from 709x1536 screenshot: x≈156..305, y≈1123..1183.
+# Only read this small region after fast SELL; normal flow is unchanged.
+LOOT_CONFIRM_TEXT_CROP = RelativeRect(0.22, 0.731, 0.43, 0.770)

@@ -281,27 +281,14 @@ Always verify foreground first and OCR again when candidate pixels differ.
 
 ### Fast Exceptional SELL (Desktop Auto, Universal)
 
-Before full PaddleOCR, Desktop Auto scans the bottom-right candidate
-column `x=0.345..0.875, y=0.748..0.820` for yellow Exceptional text.
-It identifies orange text rows in the original screenshot; crops ONLY these
-rows for the OCR model, then confirms that every colored text row was
-recognized as exactly 1-2 valid Exceptional affixes. If the sum of
-(CDT/RD/MD/Triple/Mega roll divided by its per-item cap) is **below 90%**,
-a tiny badge OCR verifies both item rarities. A fast SELL is allowed only if
-candidate rarity is no higher than equipped rarity (avoids confirmation).
-An independent screenshot must still match immediately before tapping.
+One PaddleOCR pass over the candidate footer `x=0.345..0.875,
+y=0.748..0.820`. Parse the affixes in that crop, ignore ordinary affixes,
+and sum useful Exceptional percentage / its own per-roll cap. A result below
+90% triggers immediate SELL; otherwise do normal full analysis. No special
+exception for CDT −50%.
 
-Strong candidates and any ambiguity use the complete, unchanged
-`LootDecisionEngine → ItemComparer → Universal` pipeline. This is an
-intentional gameplay policy to skip unpromising items, not a proof that a
-weak-Exceptional candidate cannot improve today's overall combat score.
-It does not affect Info mode or Android Auto; Android currently continues
-using its normal, fully validated decision path. No scores or equipment state
-are updated for fast sells.
-
-The 90%-cap Exceptional threshold is a shared **Universal decision policy**
-(`src/exceptional_gate.py`), also used by Android once its normal OCR
-finishes. The desktop prefilter uses the same policy but can skip all other
-OCR if every colored candidate row is certain. This is deliberately an
-overriding preference, not a claim that weak-Exceptional items never have
-better immediate PvE score. It does not alter the PVE/PVP scoring modes.
+After **fast SELL only**, read the tiny fixed `Confirm` label crop
+(`x=0.22..0.43, y=0.731..0.770`) once; after normalizing OCR text, click
+Confirm only when it equals `confirm`. Normal Desktop/Android flows are
+unchanged. The fast path intentionally omits color, rarity, hash and
+fresh-frame verification, per the requested speed-first behavior.

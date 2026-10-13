@@ -103,8 +103,8 @@ class LootWatcher:
                 if self.presenter.verbose:
                     self.presenter.warning(f"Fast OCR unavailable; full OCR fallback: {exc}")
                 evidence = None
-            if evidence is not None and self.mode.quick_sell(image, evidence.crop):
-                names = ", ".join(f"{s.name} {abs(s.value):.2f}%" for s in evidence.stats)
+            if evidence is not None and self.mode.quick_sell(image):
+                names = ", ".join(f"{s.name} {abs(s.value):.2f}%" for s in evidence.stats) or "no useful Exceptional"
                 comparison = Comparison(
                     status=ComparisonStatus.OK,
                     action=Action.SELL,

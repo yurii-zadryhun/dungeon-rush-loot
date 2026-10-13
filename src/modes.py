@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
-from PIL import Image, ImageChops
+from PIL import Image
 
 from .adb import AdbDevice
 from .analysis import LootAnalyzer
@@ -15,7 +15,10 @@ from .equipment import JsonEquipmentRepository
 from .notification import PhoneNotifier
 from .presentation import ConsolePresenter
 from .touch import RandomizedAdbTouchController
-from .vision import semantic_candidate_hash, source_region_for_lines, visual_difference, visual_signature
+from .vision import semantic_candidate_hash, source_region_for_lines, visual_difference, visual_signature, preprocess_popup
+from .ui_geometry import LOOT_CONFIRM_TEXT_CROP
+from .text import normalize_text
+import re
 
 
 @dataclass(frozen=True)
@@ -69,30 +72,21 @@ class AutoClickMode:
     def handle_check(self, comparison) -> None:
         return None
 
-    def quick_sell(self, original: Image.Image, region: tuple[int, int, int, int]) -> bool:
-        """Touch only after the same foreground and fresh-frame gates as Auto."""
-        if self.device.foreground_package() != TARGET_PACKAGE:
-            return False
-        current = self.device.screenshot()
-        if current.size != original.size:
-            return False
-        # Full candidate card + equipped rarity/header must be identical.
-        # Checking only the yellow affixes would miss a changed Divine title
-        # or a rarity upgrade carrying the same weak exceptional line.
-        w, h = current.size
-        candidate_card = (int(.125*w), int(.645*h), int(.875*w), int(.820*h))
-        equipped_badge = (int(.125*w), int(.400*h), int(.345*w), int(.645*h))
-        for checked_region in (candidate_card, equipped_badge):
-            if ImageChops.difference(
-                original.crop(checked_region).convert("RGB"),
-                current.crop(checked_region).convert("RGB"),
-            ).getbbox() is not None:
-                return False
-        if self.device.foreground_package() != TARGET_PACKAGE:
-            return False
-        # The probe only authorizes candidates whose rarity is not an
-        # upgrade, so the Divine-over-Immortal confirmation case is excluded.
-        self.click(Action.SELL, current.size)
+    def quick_sell(self, image: Image.Image) -> bool:
+        """Fast path only: SELL, then one small OCR for an optional Confirm."""
+        self.click(Action.SELL, image.size)
+        time.sleep(0.15)
+        screenshot = self.device.screenshot()
+        region = LOOT_CONFIRM_TEXT_CROP.pixels(screenshot.size)
+        words = self.analyzer.engine.recognize(
+            preprocess_popup(screenshot.crop(region), self.scale)
+        )
+        normalized = re.sub(
+            r"[^a-z]", "",
+            normalize_text(" ".join(span.text for span in words)).lower(),
+        )
+        if normalized == "confirm":
+            self.click(Action.CONFIRM_SELL, screenshot.size)
         return True
 
     def handle(self, context: DecisionContext) -> ModeOutcome:
