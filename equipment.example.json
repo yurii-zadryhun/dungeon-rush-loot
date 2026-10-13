@@ -64,5 +64,34 @@
       "attack speed": 0,
       "damage": 0
     }
+  },
+  "wings": {
+    "title": "REPLACE ME - current wings",
+    "rarity": "Divine",
+    "level": 100,
+    "primary": {
+      "attack": 1,
+      "health": 1
+    },
+    "stats": {
+      "ranged damage": 0,
+      "critical damage": 0,
+      "damage": 0,
+      "critical chance": 0,
+      "attack speed": 0
+    }
+  },
+  "cape": {
+    "title": "REPLACE ME - current cape",
+    "rarity": "Mythic",
+    "level": 1,
+    "intrinsic_stats": {
+      "damage": 1,
+      "health": 1
+    },
+    "stats": {
+      "critical damage": 0,
+      "critical chance": 0
+    }
   }
 }

@@ -11,8 +11,10 @@ from .config import (
     BASE_SCORE_MIN_LEVEL,
     BASE_SCORE_MIN_TIER,
     LEVEL_SCALER,
+    MAX_ITEM_LEVEL,
     MAX_STATS,
     MIN_STATS,
+    SKILLS,
     TIER_SCALER,
 )
 from .domain import (
@@ -26,7 +28,9 @@ from .domain import (
     ParsedItem,
     ScoreComponent,
 )
-from .equipment import EquipmentLoadout, EquipmentStateError, JsonEquipmentRepository, beneficial_value
+from .equipment import EquipmentLoadout, EquipmentRepository, EquipmentStateError, beneficial_value
+from .affix_rules import unparsed_affix_lines, validate_affixes
+from .game_catalog import match_standard_item
 from .strategies import BuildScoringStrategy
 from .text import canonical_name
 
@@ -67,6 +71,8 @@ class PrimaryPowerScorer:
 
 class PrimaryStatCalculator:
     def value(self, slot: EquipmentSlot, item: ParsedItem) -> float:
+        if slot not in PRIMARY_BASE:
+            raise ValueError(f"{slot.value} does not use the standard slot primary formula.")
         if item.tier is None or item.level is None:
             raise ValueError("Rarity/tier and level are required for primary-stat scoring.")
         return PRIMARY_BASE[slot] * (TIER_SCALER**item.tier) * (1.0 + LEVEL_SCALER * item.level)
@@ -83,17 +89,22 @@ class BuildMetricsAggregator:
         base_attack = 0.0
         base_health = 0.0
         for slot, item in loadout:
-            primary = self.primary.value(slot, item)
             if slot in ATTACK_SLOTS:
-                base_attack += primary
+                base_attack += self.primary.value(slot, item)
             elif slot in HEALTH_SLOTS:
-                base_health += primary
-            for stat in item.stats:
+                base_health += self.primary.value(slot, item)
+            elif slot is EquipmentSlot.WINGS:
+                base_attack += item.primary_attack or 0.0
+                base_health += item.primary_health or 0.0
+
+            for stat in (*item.intrinsic_stats, *item.stats):
                 name = canonical_name(stat.name)
                 value = beneficial_value(name, stat.value)
                 stats[name] = stats.get(name, 0.0) + value
-                equipment_rolls.setdefault(name, []).append(value)
-                item_affixes.setdefault(slot, {})[name] = value
+                if slot in ATTACK_SLOTS or slot in HEALTH_SLOTS:
+                    if stat in item.stats:
+                        equipment_rolls.setdefault(name, []).append(value)
+                        item_affixes.setdefault(slot, {})[name] = value
         return BuildMetrics(
             base_attack=base_attack,
             base_health=base_health,
@@ -162,7 +173,7 @@ class BuildScorer:
 class ItemComparer:
     def __init__(
         self,
-        equipment: JsonEquipmentRepository | None = None,
+        equipment: EquipmentRepository | None = None,
         scorer: BuildScorer | None = None,
         allow_partial: bool = False,
     ) -> None:
@@ -171,8 +182,8 @@ class ItemComparer:
         self.allow_partial = allow_partial
 
     def compare(self, equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
-        if candidate.melee:
-            return self._melee_rejection(equipped, candidate)
+        # Do not bypass OCR and slot validation for hard-rejected melee drops.
+        # Even SELL is an irreversible action and must be based on real cards.
         validation_error = self._validation_error(equipped, candidate)
         if validation_error:
             return self._check(equipped, candidate, validation_error)
@@ -186,6 +197,16 @@ class ItemComparer:
             slot = loadout.slot_of(equipped)
         except EquipmentStateError as exc:
             return self._check(equipped, candidate, str(exc))
+
+        equipped_match = match_standard_item([equipped.title])
+        candidate_match = match_standard_item([candidate.title])
+        if equipped_match is None or equipped_match.slot is not slot:
+            return self._check(equipped, candidate, "Equipped title does not match its catalog slot.")
+        if candidate_match is None or candidate_match.slot is not slot:
+            return self._check(equipped, candidate, "Candidate item is not in the equipped slot (game catalog).")
+
+        if candidate.melee:
+            return self._melee_rejection(equipped, candidate, slot)
 
         current_score = self.scorer.score(loadout, protected_slot=slot)
         candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
@@ -202,26 +223,35 @@ class ItemComparer:
         )
 
     def _validation_error(self, equipped: ParsedItem, candidate: ParsedItem) -> str | None:
-        if equipped.tier is None or candidate.tier is None or equipped.level is None or candidate.level is None:
-            return "Could not parse rarity/level required for primary-stat scoring."
-        if not self.allow_partial and (not self._valid_stat_count(equipped) or not self._valid_stat_count(candidate)):
-            return f"Expected 4-5 stats; candidate={len(candidate.stats)}, equipped={len(equipped.stats)}."
+        for label, item in (("equipped", equipped), ("candidate", candidate)):
+            if item.tier is None or item.level is None or not 1 <= item.level <= MAX_ITEM_LEVEL:
+                return f"Could not parse valid {label} rarity/level."
+            if not item.title:
+                return f"Missing {label} item title."
+            # Report visible-but-unparsed OCR lines before the count check;
+            # e.g. an impossible 50% Crit Chance should not be silently lost.
+            missing = unparsed_affix_lines(item.raw_lines, item.stats)
+            if missing:
+                return f"Unparsed {label} affix lines: {missing[:3]}."
+            if not self.allow_partial:
+                problem = validate_affixes(item.title, item.stats, rarity=item.rarity)
+                if problem:
+                    return f"{label}: {problem}"
         return None
 
     @staticmethod
-    def _valid_stat_count(item: ParsedItem) -> bool:
-        return MIN_STATS <= len(item.stats) <= MAX_STATS
-
-    @staticmethod
-    def _melee_rejection(equipped: ParsedItem, candidate: ParsedItem) -> Comparison:
+    def _melee_rejection(
+        equipped: ParsedItem, candidate: ParsedItem, slot: EquipmentSlot,
+    ) -> Comparison:
         return Comparison(
-            ComparisonStatus.OK,
-            Action.SELL,
-            candidate,
-            equipped,
-            None,
-            None,
-            "Melee candidate hard-rejected.",
+            status=ComparisonStatus.OK,
+            action=Action.SELL,
+            candidate=candidate,
+            equipped=equipped,
+            candidate_score=None,
+            equipped_score=None,
+            message="Melee candidate hard-rejected after full OCR and slot validation.",
+            equipment_slot=slot,
             rejection_reason="melee",
         )
 

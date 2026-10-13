@@ -4,9 +4,39 @@ import re
 from statistics import median
 from typing import Sequence
 
-from .config import MAX_ITEM_LEVEL
+from .config import MAX_ITEM_LEVEL, RARITY_TIERS, SKILLS
 from .domain import Box, OcrLine, OcrSpan, ParsedItem, ParsedStat
+from .game_catalog import match_standard_item
 from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_like_title, normalize_text, parse_rarity
+
+
+# Recognition can lose the percent glyph or render it as l/I/°.
+# The numeric digits remain strict, and missing percent is accepted only with
+# an explicit +/- sign, an unambiguous known skill, and an in-range value.
+STAT_NUMBER_RE = re.compile(
+    r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
+    r"\s*(?P<suffix>%(?:\s*%)*|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
+    re.I,
+)
+# OCR frequently corrupts the tiny "Lvl" glyphs. After the stable "Lv"
+# anchor, allow up to three non-digits; also accept the OCR-confusable "1"
+# for its last "l" ONLY when followed by a non-digit separator (e.g. "Lv1 123").
+# Never guess, combine, or reconstruct digits of the actual level. Preserve
+# the historical verified "Lv0124" glyph-variant separately.
+# A negative decimal affix (e.g. "Lvl 58 -1.45% Companion Cooldown")
+# after the level is NOT a continuation of its digits. In contrast,
+# "Lv1-87" must not be prematurely parsed as a level of 1.
+LEVEL_MARKER_RE = re.compile(
+    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu](?:[^\d\n]{0,3}|1[^\d\n]{1,3}))\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,/:]\s*\d|-(?!\d{1,3}[.,]\d{1,2})\s*\d))",
+    re.I,
+)
+# Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
+# A bullet is recovered as a positive separator ONLY when an explicit level
+# marker occurs on the same row, followed by an intact decimal stat value.
+LEVEL_ROW_BULLET_SIGN_RE = re.compile(
+    r"^[•·]\s*(?=\d{1,3}[.,]\d{1,2}(?:\s|%|$))"
+)
+NEGATIVE_ONLY_SKILLS = frozenset({"critical damage taken", "companion cooldown"})
 
 
 class OcrLineAssembler:
@@ -43,28 +73,103 @@ class OcrLineAssembler:
         return OcrLine(text, score, box, tuple(row))
 
 
+class LootCardTitleCountError(ValueError):
+    pass
+
+
 class LootCardSplitter:
+    """Split the two visible loot cards without discarding separate rarity rows.
+
+    Positions and readable item titles, not gaps between percentage values,
+    delimit cards. A missing or ambiguous title must be CHECK, never a tap.
+    """
+
     def split(self, lines: Sequence[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]]:
-        useful = [line for line in lines if not re.fullmatch(r"\s*(?:sell|equip|equipped)\s*", line.text, re.I)]
-        by_titles = self._split_by_titles(useful)
-        return by_titles if by_titles is not None else self._split_by_percent_gap(useful)
+        useful = [
+            line for line in lines
+            if not re.fullmatch(r"\s*(?:sell|equip|equipped)\s*", line.text, re.I)
+        ]
+        titles = [
+            index for index in range(len(useful))
+            if self._title_at(useful, index) is not None
+        ]
+        if len(titles) != 2:
+            raise LootCardTitleCountError(
+                f"Expected exactly two identifiable loot-card titles, got {len(titles)}."
+            )
+
+        first_title, second_title = titles
+        first_start = self._card_start(useful, first_title)
+        second_start = self._card_start(useful, second_title)
+        if first_start >= second_start or first_title >= second_start:
+            raise ValueError("Loot-card title/rarity boundaries overlap.")
+
+        return useful[first_start:second_start], useful[second_start:]
 
     @staticmethod
-    def _split_by_titles(lines: list[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]] | None:
-        indices = [i for i, line in enumerate(lines) if looks_like_title(line.text)]
-        if len(indices) < 2:
+    def _is_item_title(text: str) -> bool:
+        stripped = normalize_text(text)
+        if not LootCardSplitter._title_fragment(stripped):
+            return False
+        match = match_standard_item([stripped])
+        if match is None:
+            return False
+        # "Backpack" or "Gloves" alone are NOT identifying item titles.
+        return match.exact or match.confidence >= 0.94
+
+    @classmethod
+    def _title_at(cls, lines: Sequence[OcrLine], index: int) -> str | None:
+        text = normalize_text(lines[index].text)
+        if index > 0:
+            previous = normalize_text(lines[index - 1].text)
+            if (
+                cls._title_fragment(previous)
+                and cls._title_fragment(text)
+                and not cls._is_item_title(previous)
+                and not cls._is_item_title(text)
+                and match_standard_item([previous + " " + text]) is not None
+            ):
+                # This row completes a two-line title already discovered at
+                # index-1; it is not the title of a second loot card.
+                return None
+
+        if cls._is_item_title(text):
+            return text
+
+        # Wrapped [EXP] item names are common on 709px screens, e.g.
+        # "[EXP] +11 Crimson" / "Backpack". Both fragments must reconstruct a
+        # known catalog name. Unknown, partial titles remain CHECK/no action.
+        if index + 1 >= len(lines) or not cls._title_fragment(text):
             return None
-        first, second = indices[0], indices[1]
-        return lines[first:second], lines[second:]
+        following = normalize_text(lines[index + 1].text)
+        if not cls._title_fragment(following) or cls._is_item_title(following):
+            # E.g. "Taken" from a wrapped Critical Damage Taken affix
+            # followed by a complete "Immortal [EXP] Scarlet Necklace".
+            return None
+        combined = f"{text} {following}"
+        return combined if match_standard_item([combined]) is not None else None
 
     @staticmethod
-    def _split_by_percent_gap(lines: list[OcrLine]) -> tuple[list[OcrLine], list[OcrLine]]:
-        percent_lines = [line for line in lines if PERCENT_RE.search(line.text)]
-        if len(percent_lines) < 8:
-            raise ValueError("Could not reliably split equipped and candidate cards.")
-        gaps = [(right.box.center_y - left.box.center_y, (left.box.center_y + right.box.center_y) / 2) for left, right in zip(percent_lines, percent_lines[1:])]
-        split_y = max(gaps, key=lambda pair: pair[0])[1]
-        return [line for line in lines if line.box.center_y < split_y], [line for line in lines if line.box.center_y >= split_y]
+    def _title_fragment(value: str) -> bool:
+        text = normalize_text(value)
+        if not text or text.lower() in RARITY_TIERS:
+            return False
+        if text.lower() in {"equipped", "equip", "sell"}:
+            return False
+        if LEVEL_RE.search(text) or PERCENT_RE.search(text) or STAT_NUMBER_RE.search(text):
+            return False
+        if re.match(r"^\s*(?:damage|health)\s+\d", text, re.I):
+            return False
+        if re.fullmatch(r"\[\s*(?:range|ranged|melee|meele)\s*\]", text, re.I):
+            return False
+        return True
+
+    @staticmethod
+    def _card_start(lines: Sequence[OcrLine], title_index: int) -> int:
+        if title_index == 0:
+            return 0
+        previous = normalize_text(lines[title_index - 1].text).lower()
+        return title_index - 1 if previous in RARITY_TIERS else title_index
 
 
 class LootItemParser:
@@ -81,103 +186,184 @@ class LootItemParser:
             stats=stats,
             raw_lines=tuple(line.text for line in lines),
             average_ocr_confidence=sum(confidences) / len(confidences) if confidences else 0.0,
-            melee=is_melee_title(title),
+            melee=any(is_melee_title(line.text) for line in lines),
         )
 
     def _level(self, lines: Sequence[OcrLine]) -> int | None:
+        # A game HUD "Lvl 123" sometimes remains visible to the right of the
+        # loot popup. Ignore only standalone level spans clearly outside the
+        # stat-text boundary, not contradictory levels inside the card.
+        stat_rights = [
+            line.box.right for line in lines
+            if STAT_NUMBER_RE.search(self._strip_level_marker(normalize_text(line.text)))
+            and ("%" in line.text or "+" in line.text or "-" in line.text)
+        ]
+        right_boundary = max(stat_rights) if stat_rights else None
+        levels: set[int] = set()
         for line in lines:
             text = normalize_text(line.text)
-            search_text = text[:text.find("%")] if "%" in text else text
-
-            match = LEVEL_RE.search(search_text)
-            if not match:
+            matches = list(LEVEL_MARKER_RE.finditer(text))
+            if not matches:
                 continue
-
-            level = self._normalize_ocr_level(int(match.group(1)))
-            if level is not None:
-                return level
-
-        return None
+            remainder = self._strip_level_marker(text).strip(" ()")
+            if (
+                not remainder and right_boundary is not None
+                and line.box.left > right_boundary + 20
+            ):
+                continue
+            for match in matches:
+                number = match.group("level").upper().replace("O", "0")
+                level = self._normalize_ocr_level(int(number))
+                if level is not None:
+                    levels.add(level)
+        return next(iter(levels)) if len(levels) == 1 else None
 
     @staticmethod
     def _normalize_ocr_level(level: int) -> int | None:
         if 1 <= level <= MAX_ITEM_LEVEL:
             return level
 
-        if 131 <= level <= 199:
-            return level - 100
-
+        # A value above the game cap is not evidence of a smaller number:
+        # never silently repair numeric OCR by subtracting 100.
         return None
 
     @staticmethod
     def _title(lines: Sequence[OcrLine]) -> str:
-        for line in lines:
-            if looks_like_title(line.text):
-                return normalize_text(line.text)
-        for line in lines:
-            text = normalize_text(line.text)
-            if not PERCENT_RE.search(text) and not LEVEL_RE.search(text.replace(" ", "")) and text.lower() != "equipped":
-                return text
+        for index in range(len(lines)):
+            title = LootCardSplitter._title_at(lines, index)
+            if title is None:
+                continue
+            if index > 0:
+                rarity = normalize_text(lines[index - 1].text)
+                if rarity.lower() in RARITY_TIERS:
+                    return f"{rarity} {title}"
+            return title
         return ""
 
-    def _stats(self, lines: Sequence[OcrLine]) -> list[ParsedStat]:
+    def _stats(
+        self, lines: Sequence[OcrLine], *, allow_cape_primaries: bool = False,
+    ) -> list[ParsedStat]:
+        """Parse stat rows without inferring or changing numeric digits."""
         parsed: list[ParsedStat] = []
         index = 0
         while index < len(lines):
-            result, consumed_next = self._parse_stat(lines, index)
-            if result is not None:
-                parsed.append(result)
-            index += 2 if consumed_next else 1
-        return self._dedupe(parsed)
+            stat, consumed = self._parse_stat(lines, index, allow_cape_primaries)
+            if stat is not None:
+                parsed.append(stat)
+            index += consumed
+        # Do not erase duplicated/contradictory OCR rolls before validation.
+        # On 2-affix gear that could turn an invalid 3-row card into OK.
+        return parsed
 
-    def _parse_stat(self, lines: Sequence[OcrLine], index: int) -> tuple[ParsedStat | None, bool]:
+    def _parse_stat(
+        self, lines: Sequence[OcrLine], index: int, allow_cape_primaries: bool,
+    ) -> tuple[ParsedStat | None, int]:
         line = lines[index]
-        source = self._percent_source(line)
-        if source is None:
-            return None, False
-        value, remainder, source_score, raw_percent = source
-        candidates = [remainder] + self._continuations(lines, index, remainder)
-        chosen_name, chosen_ratio, chosen_raw = self._best_name(candidates)
-        if chosen_name is None:
-            return None, False
-        stat = ParsedStat(chosen_name, value, f"{raw_percent} {chosen_raw}".strip(), min(source_score, chosen_ratio))
-        return stat, len(candidates) > 1 and chosen_raw == candidates[1]
+        # Numbers can appear after "Lvl 87" on the same physical OCR line.
+        observed = normalize_text(line.text)
+        clean = self._strip_level_marker(observed)
+        if LEVEL_MARKER_RE.search(observed):
+            # Do not guess numbers: preserve the intact two-decimal value.
+            # The known positive-only skill and cap are checked below.
+            clean = LEVEL_ROW_BULLET_SIGN_RE.sub("+", clean, count=1)
+        match = STAT_NUMBER_RE.search(clean)
+        if match is None:
+            return None, 1
 
-    def _percent_source(self, line: OcrLine) -> tuple[float, str, float, str] | None:
-        sources = [(normalize_text(span.text), span.score) for span in line.spans if PERCENT_RE.search(normalize_text(span.text))]
-        sources.append((normalize_text(line.text), line.score))
-        for text, score in sources:
-            match = PERCENT_RE.search(text)
-            if match is None:
+        numeric = match.group("number")
+        suffix = (match.group("suffix") or "").strip()
+        value = float(numeric.replace(" ", "").replace(",", "."))
+        remainder = self._clean_label(clean[match.end():])
+        # Only a real percent or a close visual glyph variant counts as a
+        # recognized separator. Wholly missing separators require a sign.
+        repaired_separator = not suffix.startswith("%")
+        if repaired_separator and not numeric.lstrip().startswith(("+", "-")):
+            return None, 1
+
+        candidates: list[tuple[str, int]] = [(remainder, 1)]
+        candidates.extend(self._continuations(lines, index, remainder))
+
+        ranked: list[tuple[float, int, str, str]] = []
+        for label, consumed in candidates:
+            name, ratio = fuzzy_skill_name(label)
+            if name is None:
                 continue
-            remainder = self._clean_label(text[match.end():])
-            if remainder:
-                return float(match.group(1).replace(" ", "").replace(",", ".")), remainder, score, match.group(0)
-        return None
+            # Never infer a missing percent from a poor/ambiguous name match.
+            if repaired_separator and ratio < 0.93:
+                continue
+            if not self._valid_stat_value(name, value, allow_cape_primaries):
+                continue
+            ranked.append((ratio, consumed, name, label))
 
-    def _continuations(self, lines: Sequence[OcrLine], index: int, remainder: str) -> list[str]:
-        if index + 1 >= len(lines) or PERCENT_RE.search(lines[index + 1].text):
-            return []
-        next_text = self._clean_label(lines[index + 1].text)
-        return [f"{remainder} {next_text}".strip()] if next_text and not looks_like_title(next_text) else []
+        if not ranked:
+            return None, 1
+        ratio, consumed, name, raw_label = max(
+            ranked, key=lambda entry: (entry[0], -entry[1])
+        )
+        if repaired_separator:
+            # We recovered the separator, NOT the number. Keep original text
+            # and signal reduced certainty relative to an intact percent glyph.
+            confidence = min(line.score, ratio, 0.93)
+        else:
+            confidence = min(line.score, ratio)
+        return ParsedStat(name, value, line.text, confidence), consumed
 
     @staticmethod
-    def _best_name(candidates: list[str]) -> tuple[str | None, float, str]:
-        scored = []
-        for raw in candidates:
-            name, ratio = fuzzy_skill_name(raw)
-            scored.append((name, ratio, raw))
-        return max(scored, key=lambda row: (row[1], len(row[2]))) if scored else (None, 0.0, "")
+    def _strip_level_marker(text: str) -> str:
+        return LEVEL_MARKER_RE.sub(" ", text).strip()
+
+    def _continuations(
+        self, lines: Sequence[OcrLine], index: int, remainder: str,
+    ) -> list[tuple[str, int]]:
+        # ML Kit sometimes places the level between a percentage and its
+        # textual label. Inspect at most two following physical rows.
+        additions: list[tuple[str, int]] = []
+        parts = [remainder] if remainder else []
+        for lookahead in (1, 2):
+            next_index = index + lookahead
+            if next_index >= len(lines):
+                break
+            text = normalize_text(lines[next_index].text)
+            if LEVEL_MARKER_RE.fullmatch(text):
+                continue
+            if STAT_NUMBER_RE.search(text) or PERCENT_RE.search(text):
+                break
+            if looks_like_title(text) or text.lower() in RARITY_TIERS:
+                break
+            if re.match(r"^\s*(?:damage|health)\s+\d", text, re.I):
+                break
+            if text.lower() in {"sell", "equip", "equipped"}:
+                break
+            cleaned = self._clean_label(text)
+            if not cleaned:
+                break
+            parts.append(cleaned)
+            additions.append((" ".join(parts), lookahead + 1))
+        return additions
+
+    @staticmethod
+    def _valid_stat_value(
+        name: str, value: float, allow_cape_primaries: bool,
+    ) -> bool:
+        # Intrinsic Cape Damage/Health are NOT rolled affixes. A later
+        # progression check must match their exact expected values.
+        if allow_cape_primaries and name in {"damage", "health"} and 0 < value <= 500:
+            return True
+        rule = SKILLS.get(name)
+        if rule is None or not 0.01 <= abs(value) <= rule.cap + 0.05:
+            return False
+        return (value < 0) if name in NEGATIVE_ONLY_SKILLS else (value > 0)
 
     @staticmethod
     def _clean_label(raw: str) -> str:
-        text = normalize_text(raw).strip(" :-·•")
-        text = re.sub(r"\s+\b(?:lvl|lv|lvi)\s*[-:.]?\s*\d{1,3}\b.*$", "", text, flags=re.I)
-        text = re.sub(r"\s+\bx\d+\b.*$", "", text, flags=re.I)
-        if re.fullmatch(r"(?:lvl|lv|lvi)\s*[-:.]?\s*\d{1,3}|x\d+", text, re.I):
-            return ""
-        return text.strip(" :-·•")
-
+        text = LEVEL_MARKER_RE.sub(" ", normalize_text(raw))
+        # Rare ML Kit lines contain the game's adjacent x4 reward badge
+        # appended to an otherwise complete affix: "Attack Speed BSX4".
+        # Strip ONLY a trailing, visually identified badge, never free-form
+        # unrecognized words or digits inside an affix name.
+        text = re.sub(r"\s+B[S]?X4\s*$", "", text, flags=re.I)
+        return re.sub(r"\s+", " ", text).strip(" :-·•")
+    
     @staticmethod
     def _dedupe(stats: list[ParsedStat]) -> list[ParsedStat]:
         seen: set[tuple[str, float]] = set()

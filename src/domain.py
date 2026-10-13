@@ -24,6 +24,8 @@ class EquipmentSlot(str, Enum):
     GLOVES = "gloves"
     NECKLACE = "necklace"
     RING = "ring"
+    WINGS = "wings"
+    CAPE = "cape"
 
 
 class ScoringStrategy(str, Enum):
@@ -93,6 +95,9 @@ class ParsedItem:
     raw_lines: tuple[str, ...]
     average_ocr_confidence: float
     melee: bool = False
+    primary_attack: float | None = None
+    primary_health: float | None = None
+    intrinsic_stats: tuple[ParsedStat, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -102,10 +107,10 @@ class BuildMetrics:
     attack_progression: float
     health_progression: float
     stats: Mapping[str, float]
-    # Values retained separately for the six replaceable [EXP] items.
-    # Universal needs individual exceptional quality, not summed totals.
+    # Rolls from the six interchangeable items, excluding fixed Wings/Cape.
+    # Preserves per-item quality/count information lost in aggregate totals.
     equipment_rolls: Mapping[str, tuple[float, ...]] | None = None
-    # Same-item normal affixes let us reward AS + Crit Damage together.
+    # Retain roll co-occurrence on the same item for paired normal-skill goals.
     item_affixes: Mapping[EquipmentSlot, Mapping[str, float]] | None = None
 
 
@@ -162,12 +167,21 @@ class Comparison:
 
 
 @dataclass(frozen=True)
+class OcrPass:
+    kind: str
+    crop: Box
+    scale: float
+    lines: tuple[OcrSpan, ...]
+
+
+@dataclass(frozen=True)
 class AnalysisArtifacts:
     comparison: Comparison
     popup_box: tuple[int, int, int, int]
     popup_lines: tuple[OcrLine, ...]
     equipped_lines: tuple[OcrLine, ...]
     candidate_lines: tuple[OcrLine, ...]
+    rarity_level_passes: tuple[OcrPass, ...] = ()
 
 
 @dataclass(frozen=True)

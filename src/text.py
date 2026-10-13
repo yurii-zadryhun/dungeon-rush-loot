@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import difflib
 import re
 
 from .config import ALIASES, RARITY_TIERS, SKILLS, TITLE_HINTS
@@ -46,9 +45,73 @@ def _fix_common_ocr_errors(value: str) -> str:
 
 
 def _closest_skill(value: str) -> tuple[str | None, float]:
-    best = max(SKILLS, key=lambda skill: difflib.SequenceMatcher(None, value, skill).ratio())
-    ratio = difflib.SequenceMatcher(None, value, best).ratio()
-    return (best, ratio) if ratio >= 0.72 else (None, ratio)
+    ranked = sorted(
+        ((ocr_text_similarity(value, skill), skill) for skill in SKILLS),
+        reverse=True,
+    )
+    if not ranked:
+        return None, 0.0
+
+    best_ratio, best = ranked[0]
+    second_ratio = ranked[1][0] if len(ranked) > 1 else 0.0
+    threshold = 0.78 if len(value) <= 6 else 0.72
+    if best_ratio < threshold or best_ratio - second_ratio < 0.05:
+        return None, best_ratio
+    return best, best_ratio
+
+
+_OCR_CONFUSABLE_SUBSTITUTIONS = {
+    ("0", "o"),
+    ("1", "l"),
+    ("1", "i"),
+    ("2", "z"),
+    ("5", "s"),
+    ("6", "g"),
+    ("8", "b"),
+}
+
+
+def ocr_text_similarity(observed: str, expected: str) -> float:
+    """OCR-aware Levenshtein similarity for textual labels only.
+
+    Numeric stat values deliberately never pass through this function.
+    Common glyph confusions inside names get a reduced substitution cost.
+    """
+    left = canonical_name(observed)
+    right = canonical_name(expected)
+    if left == right:
+        return 1.0
+    if not left or not right:
+        return 0.0
+
+    distance = _weighted_levenshtein(left, right)
+    return max(0.0, 1.0 - distance / max(len(left), len(right)))
+
+
+def _weighted_levenshtein(left: str, right: str) -> float:
+    previous = [float(index) for index in range(len(right) + 1)]
+    for left_index, left_char in enumerate(left, start=1):
+        current = [float(left_index)]
+        for right_index, right_char in enumerate(right, start=1):
+            current.append(
+                min(
+                    current[right_index - 1] + 1.0,
+                    previous[right_index] + 1.0,
+                    previous[right_index - 1] + _ocr_substitution_cost(left_char, right_char),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _ocr_substitution_cost(observed: str, expected: str) -> float:
+    if observed == expected:
+        return 0.0
+    pair = (observed.lower(), expected.lower())
+    reverse = (pair[1], pair[0])
+    if pair in _OCR_CONFUSABLE_SUBSTITUTIONS or reverse in _OCR_CONFUSABLE_SUBSTITUTIONS:
+        return 0.25
+    return 1.0
 
 
 def looks_like_title(text: str) -> bool:

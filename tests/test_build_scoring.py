@@ -158,6 +158,10 @@ class EquipmentRepositoryTest(unittest.TestCase):
                     stat("damage", 15),
                 ),
             )
+            # The new item has a Triple Hit exceptional roll, so the
+            # persisted title must retain the actual [EXP] marker.
+            from dataclasses import replace
+            candidate = replace(candidate, title="Divine [EXP] Void Ring")
             repository.replace(EquipmentSlot.RING, candidate)
 
             self.assertEqual(repository.snapshot().slot_of(candidate), EquipmentSlot.RING)
@@ -179,6 +183,11 @@ class EquipmentRepositoryTest(unittest.TestCase):
                     stat("damage", 15),
                 ),
             )
+            # Comparisons now require real catalog-backed titles: the UI
+            # must prove that equipped and candidate belong to the same slot.
+            from dataclasses import replace
+            equipped = replace(equipped, title="Divine Iron Ring")
+            candidate = replace(candidate, title="Divine [EXP] Void Ring")
             comparer = ItemComparer(repository, BuildScorer(strategy_for(ScoringStrategy.UNIVERSAL)))
             comparison = comparer.compare(equipped, candidate)
             self.assertEqual(comparison.equipment_slot, EquipmentSlot.RING)
@@ -188,17 +197,42 @@ class EquipmentRepositoryTest(unittest.TestCase):
     def _payload() -> dict:
         payload = {}
         for index, slot in enumerate(EquipmentSlot):
-            payload[slot.value] = {
-                "title": f"Divine {slot.value}",
-                "rarity": "Divine",
-                "level": 100 + index,
-                "stats": {
-                    "health": 1 + index,
-                    "damage": 2 + index,
-                    "block chance": 1,
-                    "health regen": 1,
-                },
-            }
+            if slot is EquipmentSlot.WINGS:
+                payload[slot.value] = {
+                    "title": "Eternal",
+                    "rarity": "Divine",
+                    "level": 100,
+                    "primary": {"attack": 2_250_000, "health": 7_500_000},
+                    "stats": {
+                        "ranged damage": 13.13,
+                        "critical damage": 79.10,
+                        "damage": 13.19,
+                        "critical chance": 11.06,
+                        "attack speed": 30.50,
+                    },
+                }
+            elif slot is EquipmentSlot.CAPE:
+                payload[slot.value] = {
+                    "title": "Divine Cloak",
+                    "rarity": "Mythic",
+                    "level": 31,
+                    "intrinsic_stats": {"damage": 80, "health": 80},
+                    "stats": {
+                        "critical damage": 33.25,
+                        "critical chance": 8.89,
+                    },
+                }
+            else:
+                payload[slot.value] = {
+                    "title": f"Divine {slot.value}",
+                    "rarity": "Divine",
+                    "level": 100 + index,
+                    "stats": {
+                        "health": 1 + index,
+                        "damage": 2 + index,
+                        "block chance": 1,
+                    },
+                }
         return payload
 
 

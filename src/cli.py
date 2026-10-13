@@ -13,6 +13,7 @@ from .config import (
     DEFAULT_VISUAL_CHANGE_THRESHOLD,
     DEFAULT_VISUAL_SIGNATURE_TTL,
 )
+from .decision_log import JsonlDecisionLog
 from .domain import ScoringStrategy
 from .equipment import EquipmentStateError, JsonEquipmentRepository
 from .modes import AutoClickMode, InfoMode
@@ -109,6 +110,7 @@ def main() -> int:
         retry_interval=args.retry_interval,
         visual_signature_ttl=visual_signature_ttl,
         candidate_hash_ttl=candidate_hash_ttl,
+        decision_log=JsonlDecisionLog(args.output_dir / "decisions.jsonl", args.strategy),
     )
     return watcher.run()
 

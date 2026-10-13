@@ -5,3 +5,5 @@ equipment.json
 __pycache__/
 *.pyc
 .ruff_cache/
+# Downloaded upstream PaddleOCR SDK sources and ONNX weights (bundled at build time).
+ppocrSdk/src/

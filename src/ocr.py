@@ -36,8 +36,13 @@ class PaddleOcrEngine:
         self.pipeline = self._build_pipeline(device)
 
     def recognize(self, image: Image.Image) -> list[OcrSpan]:
+        spans, _ = self.recognize_with_diagnostics(image)
+        return spans
+
+    def recognize_with_diagnostics(self, image: Image.Image) -> tuple[list[OcrSpan], list[OcrSpan]]:
         predictions = self._predict(image)
-        return [span for prediction in predictions for span in self._spans(prediction)]
+        raw = [span for prediction in predictions for span in self._spans(prediction, filter_confidence=False)]
+        return [span for span in raw if span.score >= self.min_confidence], raw
 
     def _build_pipeline(self, device: str | None):
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
@@ -67,7 +72,7 @@ class PaddleOcrEngine:
         with suppress_native_output(self.quiet):
             return list(self.pipeline.predict(np.asarray(image.convert("RGB"))))
 
-    def _spans(self, prediction: Any) -> list[OcrSpan]:
+    def _spans(self, prediction: Any, *, filter_confidence: bool = True) -> list[OcrSpan]:
         payload = self._prediction_payload(prediction)
         texts = list(payload.get("rec_texts") or [])
         scores = list(payload.get("rec_scores") or [])
@@ -76,7 +81,7 @@ class PaddleOcrEngine:
         for index, text in enumerate(texts):
             score = float(scores[index]) if index < len(scores) else 1.0
             box = self._box_at(index, boxes, polys)
-            if str(text).strip() and score >= self.min_confidence and box is not None:
+            if str(text).strip() and (not filter_confidence or score >= self.min_confidence) and box is not None:
                 spans.append(OcrSpan(str(text).strip(), score, box))
         return spans
 
