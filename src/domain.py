@@ -102,6 +102,11 @@ class BuildMetrics:
     attack_progression: float
     health_progression: float
     stats: Mapping[str, float]
+    # Values retained separately for the six replaceable [EXP] items.
+    # Universal needs individual exceptional quality, not summed totals.
+    equipment_rolls: Mapping[str, tuple[float, ...]] | None = None
+    # Same-item normal affixes let us reward AS + Crit Damage together.
+    item_affixes: Mapping[EquipmentSlot, Mapping[str, float]] | None = None
 
 
 @dataclass(frozen=True)

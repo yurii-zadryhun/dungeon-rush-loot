@@ -172,3 +172,24 @@ bash -n loot_watcher.sh setup.sh
 ```
 
 GitHub Actions runs the unit suite, compile check, critical Ruff checks and shell syntax on Python 3.11 and 3.12.
+
+
+## Universal scoring in Desktop
+
+The Desktop default `--strategy universal` now uses the **same goal-based
+Universal objective** as the `android-live` branch, rather than the legacy
+50% PvE/50% PvP blend. On six replaceable [EXP] items, it targets exactly
+2 Critical Damage Taken rolls (each 50%+), 1 Ranged Defense (~95%+),
+1 Melee Defense (~95%+), 4 Triple Hit rolls (~90–100% total), and
+4 Mega Crit rolls (four near-10% rolls, 40% maximum). Normal-affix
+preferences, on *each item*: Attack Speed and Crit Damage as a pair,
+Crit Chance, Damage/Ranged Damage, then Lifesteal/Block/Health.
+
+The six-slot Desktop `equipment.json` format is **unchanged** and the
+existing desktop OCR/ADB tools continue to work. The Android branch
+has additional Wings/Cape and platform adapters, so absolute build scores
+are not directly comparable between the two environments. Neither
+guarantees the exact endgame build: immediate irreversible EQUIP/SELL
+decisions are a greedy online policy, not a hindsight optimizer.
+
+To verify locally: `python -m unittest discover -s tests -v`.
