@@ -44,6 +44,29 @@ class PaddleOcrEngine:
         raw = [span for prediction in predictions for span in self._spans(prediction, filter_confidence=False)]
         return [span for span in raw if span.score >= self.min_confidence], raw
 
+    def recognize_many_with_diagnostics(
+        self, images: list[Image.Image],
+    ) -> list[tuple[list[OcrSpan], list[OcrSpan]]]:
+        """OCR both popup columns in one Paddle pipeline call if supported."""
+        if not images:
+            return []
+        if not hasattr(self, "pipeline"):
+            return [self.recognize_with_diagnostics(image) for image in images]
+        try:
+            import numpy as np
+            arrays = [np.asarray(image.convert("RGB")) for image in images]
+            with suppress_native_output(self.quiet):
+                predictions = list(self.pipeline.predict(arrays))
+            if len(predictions) != len(images):
+                raise ValueError("PaddleOCR returned an unexpected batch length.")
+        except (TypeError, ValueError, RuntimeError):
+            return [self.recognize_with_diagnostics(image) for image in images]
+        results = []
+        for prediction in predictions:
+            raw = self._spans(prediction, filter_confidence=False)
+            results.append(([s for s in raw if s.score >= self.min_confidence], raw))
+        return results
+
     def _build_pipeline(self, device: str | None):
         os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
         warnings.filterwarnings("ignore", message=r"No ccache found.*")

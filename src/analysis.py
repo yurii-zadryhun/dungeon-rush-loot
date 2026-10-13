@@ -47,11 +47,14 @@ class LootAnalyzer:
         popup_left, popup_top, _, _ = popup_box
         combined: list[OcrSpan] = []
         passes: list[OcrPass] = []
-        for kind, crop in (("badge", LOOT_BADGE_CROP), ("affixes", LOOT_TEXT_CROP)):
-            region = crop.pixels(image.size)
-            accepted, raw = self.engine.recognize_with_diagnostics(
-                preprocess_popup(image.crop(region), self.scale)
-            )
+        regions = (
+            ("badge", LOOT_BADGE_CROP.pixels(image.size)),
+            ("affixes", LOOT_TEXT_CROP.pixels(image.size)),
+        )
+        processed = [preprocess_popup(image.crop(region), self.scale)
+                     for _, region in regions]
+        observations = self.engine.recognize_many_with_diagnostics(processed)
+        for (kind, region), (accepted, raw) in zip(regions, observations):
             # The shared assembler expects popup-local, scaled coordinates.
             # The diagnostics instead retain original screenshot pixels.
             dx = (region[0] - popup_left) * self.scale

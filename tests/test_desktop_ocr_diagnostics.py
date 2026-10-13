@@ -57,6 +57,23 @@ class DesktopOcrDiagnosticsTest(unittest.TestCase):
                          ["Divine Celestial Helmet", "Lv?", "Lvl87", "Immortal Dread Helm", "Lvl4"])
         self.assertEqual(self.engine.recognize(self.image), accepted)
 
+    def test_engine_batches_both_crops_when_pipeline_supports_multiple_images(self):
+        engine = PaddleOcrEngine.__new__(PaddleOcrEngine)
+        engine.min_confidence = 0.2
+        engine.quiet = True
+        engine.pipeline = Mock()
+        engine.pipeline.predict.return_value = [
+            {"rec_texts": ["Immortal"], "rec_scores": [0.99],
+             "rec_boxes": [[2, 3, 18, 12]]},
+            {"rec_texts": ["[EXP] Dread Necklace"], "rec_scores": [0.99],
+             "rec_boxes": [[2, 3, 60, 12]]},
+        ]
+        crops = [Image.new("RGB", (30, 50)), Image.new("RGB", (70, 50))]
+        result = engine.recognize_many_with_diagnostics(crops)
+        self.assertEqual([r[0][0].text for r in result],
+                         ["Immortal", "[EXP] Dread Necklace"])
+        engine.pipeline.predict.assert_called_once()
+
     def test_analyzer_maps_raw_boxes_to_screenshot_coordinates(self):
         artifacts = self.analyzer.analyze(self.image)
         badge, affixes = artifacts.rarity_level_passes
