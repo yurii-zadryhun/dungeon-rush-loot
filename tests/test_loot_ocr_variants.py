@@ -405,6 +405,73 @@ class LootOcrVariantTest(unittest.TestCase):
                     equipped, candidate,
                 )
 
+
+    def test_real_paddle_20261013_javelin_popup_with_negative_stat_same_row(self):
+        # Verbatim recognized texts and full-screen boxes from the user's
+        # session-20261013-043341-209.jsonl. Prior regex patches incorrectly
+        # rejected "Lv1 29 -4.73%" even though both level digits were present.
+        equipped = Card("Immortal", "Void Javelin", 29, (
+            ("lifesteal", 2.51),
+            ("companion cooldown", -4.73),
+            ("attack speed", 23.14),
+            ("ranged defense", 90.07),
+        ))
+        candidate = Card("Immortal", "Void Javelin", 58, (
+            ("health", 9.82),
+            ("companion cooldown", -1.45),
+            ("block chance", 2.61),
+            ("triple hit chance", 6.30),
+        ))
+        source_rows = [
+            ("Immortal [EXP] Void Javelin [Range]", 188, 1204, 939, 1268),
+            ("Damage 100.45K", 379, 1271, 725, 1328),
+            ("+2.51% Lifesteal", 383, 1330, 684, 1373),
+            ("Lv1 29 -4.73% Companion Cooldown", 204, 1375, 912, 1424),
+            ("+23.14% Attack Speed", 383, 1426, 786, 1471),
+            ("+90.07% Ranged Defense", 382, 1473, 847, 1521),
+            ("Immortal [EXP] Void Javelin [Range]", 189, 1581, 937, 1645),
+            ("Damage 130.90K", 380, 1649, 724, 1708),
+            ("+9.82% Health", 383, 1708, 653, 1750),
+            ("Lvl 58 -1.45% Companion Cooldown", 204, 1754, 908, 1803),
+            ("+2.61% Block Chance", 383, 1804, 765, 1847),
+            ("+6.30% Triple Hit Chance", 383, 1851, 839, 1898),
+        ]
+        spans = json.dumps([
+            {
+                "text": text, "score": 0.98,
+                "box": {"left": left, "top": top, "right": right, "bottom": bottom},
+            }
+            for text, left, top, right, bottom in source_rows
+        ])
+        parsed = json.loads(evaluate_spans_json(
+            spans, equipment(EquipmentSlot.WEAPON, equipped), "universal",
+        ))
+        self.assertEqual(parsed["status"], "ok", parsed["message"])
+        self.assertEqual(parsed["equipped"]["level"], 29)
+        self.assertEqual(parsed["candidate"]["level"], 58)
+        self.assertEqual(parsed["equipped"]["stats"][1]["value"], -4.73)
+        self.assertEqual(parsed["candidate"]["stats"][1]["value"], -1.45)
+        self.assertIn(parsed["action"], ("equip", "sell"))
+        self.assertTrue(parsed["verification_key"])
+
+    def test_negative_decimal_affix_cannot_invalidate_valid_level(self):
+        item_parser = LootItemParser()
+        cases = (
+            ("Lvl 58 -1.45% Companion Cooldown", 58),
+            ("Lv1 29 -4.73% Companion Cooldown", 29),
+            ("Lvl 124 -51.74% Critical Damage Taken", 124),
+            ("Lv1/87 -3.10% Companion Cooldown", 87),
+            ("Lv1-87 -3.10% Companion Cooldown", 87),
+            ("Lv0124 -3.10% Companion Cooldown", 124),
+        )
+        for row, expected in cases:
+            with self.subTest(text=row):
+                lines = [OcrLine(row, 0.98, Box(204, 1375, 912, 1424))]
+                self.assertEqual(item_parser._level(lines), expected)
+                stats = item_parser._stats(lines)
+                self.assertEqual(len(stats), 1, stats)
+
+
     def test_corrupted_numeric_level_is_never_reconstructed(self):
         equipped, candidate = CARDS[EquipmentSlot.HELMET]
         for invalid in ("06", "Lvl", "LvXXXX9", "Lvl 999", "Lv??1234", "Lv5 24", "Lv1123", "Lv1 1234", "Lvl 12.34%", "Lvl 154"):
