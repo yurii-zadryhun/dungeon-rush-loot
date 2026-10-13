@@ -47,7 +47,9 @@ class LootWatcher:
         self.state = WatchState()
         # The same full Python comparer remains authoritative for any
         # promising/uncertain item. This optional cheap SELL gate is auto-only.
-        strategy = getattr(self.analyzer.decision_engine.comparer, "scorer", None)
+        decision_engine = getattr(self.analyzer, "decision_engine", None)
+        comparer = getattr(decision_engine, "comparer", None)
+        strategy = getattr(comparer, "scorer", None)
         self.quick_probe = (
             FastExceptionalSellProbe(self.analyzer.engine, scale=self.scale)
             if isinstance(mode, AutoClickMode)
