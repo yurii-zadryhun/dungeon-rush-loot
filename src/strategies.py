@@ -225,6 +225,13 @@ class UniversalScoringStrategy:
     MEGA_ROLLS = 4
     TRIPLE_TOTAL = 95.0
     MEGA_TOTAL = 40.0
+    # A near-cap Mega/Triple is scarce and should not be disposable merely
+    # because today's unbalanced build temporarily makes it less useful.
+    TRIPLE_SUM_WEIGHT = 320.0
+    TRIPLE_ROLL_WEIGHT = 36.0
+    MEGA_SUM_WEIGHT = 420.0
+    MEGA_FINISH_WEIGHT = 45.0
+    MEGA_ROLL_WEIGHT = 40.0
     NORMAL_WEIGHTS = {
         "attack speed": 22.0,
         "critical damage": 22.0,
@@ -290,11 +297,15 @@ class UniversalScoringStrategy:
         triple_target_rolls = triple[:self.TRIPLE_ROLLS]
         mega_target_rolls = mega[:self.MEGA_ROLLS]
         triple_ratio = self._saturation(sum(triple_target_rolls), self.TRIPLE_TOTAL)
-        triple_bonus = 240.0 * triple_ratio
-        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple_target_rolls)
+        triple_bonus = self.TRIPLE_SUM_WEIGHT * triple_ratio
+        triple_bonus += self.TRIPLE_ROLL_WEIGHT * sum(
+            self._saturation(v, 27.0) for v in triple_target_rolls
+        )
         mega_ratio = self._saturation(sum(mega_target_rolls), self.MEGA_TOTAL)
-        mega_bonus = 240.0 * mega_ratio + 30.0 * mega_ratio ** 8
-        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega_target_rolls)
+        mega_bonus = self.MEGA_SUM_WEIGHT * mega_ratio + self.MEGA_FINISH_WEIGHT * mega_ratio ** 8
+        mega_bonus += self.MEGA_ROLL_WEIGHT * sum(
+            self._saturation(v, 9.5) for v in mega_target_rolls
+        )
 
         # Rank every normal affix separately; an attack-speed+crit-damage
         # pair in six slots earns six times the reward of the same pair in

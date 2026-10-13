@@ -54,6 +54,45 @@ class UniversalOpportunityPolicy:
         # A high-quality roll is harder to replace than a weak filler.
         return 90.0 * sum(ratio * ratio for ratio in ratios), max(ratios, default=0.0)
 
+
+    @staticmethod
+    def _valuable_rolls(loadout: EquipmentLoadout, name: str, count: int) -> tuple[float, ...]:
+        values = sorted((
+            beneficial_value(name, stat.value)
+            for slot, item in loadout
+            if slot in REPLACEABLE
+            for stat in item.stats
+            if canonical_name(stat.name) == name
+        ), reverse=True)
+        return tuple(values[:count])
+
+    def _protect_obtained_roles(
+        self, current: EquipmentLoadout, prospective: EquipmentLoadout,
+    ) -> bool:
+        # Counterfactuals can be optimistic, but an explicitly hard-to-replace
+        # offensive roll already in hand must not be thrown out just to
+        # chase another role. Future upgrades may be uncertain/rare.
+        for name in ("mega crit chance", "triple hit chance"):
+            old = self._valuable_rolls(current, name, 4)
+            new = self._valuable_rolls(prospective, name, 4)
+            if len(new) < len(old):
+                return False
+            if sum(new) + 0.25 < sum(old):
+                return False
+        # Preserve achieved two-CDT and single near-cap side defenses. When
+        # a role is still incomplete, the policy may reorganize those rolls.
+        for name, count, threshold in (
+            ("critical damage taken", 2, 50.0),
+            ("ranged defense", 1, 90.0),
+            ("melee defense", 1, 90.0),
+        ):
+            old = self._valuable_rolls(current, name, count)
+            new = self._valuable_rolls(prospective, name, count)
+            if len(old) == count and min(old) >= threshold:
+                if len(new) < count or min(new) < threshold:
+                    return False
+        return True
+
     def assess(
         self,
         loadout: EquipmentLoadout,
@@ -75,6 +114,8 @@ class UniversalOpportunityPolicy:
             return None
 
         alternative = loadout.with_replacement(slot, candidate)
+        if not self._protect_obtained_roles(loadout, alternative):
+            return None
         best: Opportunity | None = None
         for other in sorted(REPLACEABLE - {slot}, key=lambda item: item.value):
             # Compare exactly the same hypothetical removal on both sides.
