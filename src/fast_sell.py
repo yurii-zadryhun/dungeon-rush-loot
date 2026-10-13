@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from PIL import Image
 
-from .config import EXCEPTIONAL_SKILLS, RARITY_TIERS, SKILLS
+from .config import EXCEPTIONAL_SKILLS, RARITY_TIERS
+from .exceptional_gate import MIN_PROMISING_CAP_FRACTION, useful_exceptional_fraction
 from .domain import OcrLine, OcrSpan, ParsedStat
 from .parsing import LootItemParser, OcrLineAssembler
 from .ui_geometry import LOOT_BADGE_CROP, LOOT_EXCEPTIONAL_CROP
@@ -25,11 +26,6 @@ from .vision import preprocess_popup
 if TYPE_CHECKING:
     from .ocr import PaddleOcrEngine
 
-MIN_PROMISING_CAP_FRACTION = 0.90
-USEFUL_EXCEPTIONAL = frozenset({
-    "critical damage taken", "ranged defense", "melee defense",
-    "triple hit chance", "mega crit chance",
-})
 # Upper guard checks that no colored roll was cut by the fixed bottom crop.
 TOP_GUARD_START = 0.715
 BOTTOM_GUARD_END = 0.835
@@ -140,10 +136,7 @@ class FastExceptionalSellProbe:
         if not 1 <= len(parsed) <= 2 or len({s.name for s in parsed}) != len(parsed):
             return None
 
-        fraction = sum(
-            abs(stat.value) / SKILLS[stat.name].cap
-            for stat in parsed if stat.name in USEFUL_EXCEPTIONAL
-        )
+        fraction = useful_exceptional_fraction(parsed)
         if fraction >= MIN_PROMISING_CAP_FRACTION:
             return None
 

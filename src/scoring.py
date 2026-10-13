@@ -33,6 +33,7 @@ from .affix_rules import unparsed_affix_lines, validate_affixes
 from .game_catalog import match_standard_item
 from .strategies import BuildScoringStrategy
 from .universal_opportunity import UniversalOpportunityPolicy
+from .exceptional_gate import weak_exceptional_candidate, useful_exceptional_fraction
 from .text import canonical_name
 
 FLEXIBILITY_WEIGHT = 0.12
@@ -212,11 +213,28 @@ class ItemComparer:
         current_score = self.scorer.score(loadout, protected_slot=slot)
         candidate_score = self.scorer.score(loadout.with_replacement(slot, candidate), protected_slot=slot)
         action = Action.EQUIP if candidate_score.total > current_score.total + 0.01 else Action.SELL
+        # This is a user-requested long-term selection rule, not a weight
+        # tweak: ordinary affixes cannot justify spending a drop when none
+        # of its Exceptional rolls is sufficiently valuable. The SAME rule
+        # runs for full-parse Android and Desktop comparisons; desktop merely
+        # skips expensive OCR when it can prove the result early.
+        weak_exceptional = (
+            self.scorer.strategy.name.value == "universal"
+            and weak_exceptional_candidate(candidate.stats)
+        )
+        if weak_exceptional:
+            action = Action.SELL
         message = (
             f"{self.scorer.strategy.name.value.upper()} build-aware scoring with "
             "caps, interactions and replacement flexibility."
         )
-        if action is Action.SELL and self.scorer.strategy.name.value == "universal":
+        if weak_exceptional:
+            message = (
+                f"UNIVERSAL Exceptional gate: useful combined cap coverage "
+                f"{useful_exceptional_fraction(candidate.stats):.0%} < 90%; "
+                "sell regardless of immediate normal/base-stat advantage."
+            )
+        if action is Action.SELL and not weak_exceptional and self.scorer.strategy.name.value == "universal":
             opportunity = UniversalOpportunityPolicy().assess(
                 loadout, slot, candidate, self.scorer, current_score.total,
                 candidate_score.total,

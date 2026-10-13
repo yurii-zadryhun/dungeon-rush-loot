@@ -298,3 +298,10 @@ weak-Exceptional candidate cannot improve today's overall combat score.
 It does not affect Info mode or Android Auto; Android currently continues
 using its normal, fully validated decision path. No scores or equipment state
 are updated for fast sells.
+
+The 90%-cap Exceptional threshold is a shared **Universal decision policy**
+(`src/exceptional_gate.py`), also used by Android once its normal OCR
+finishes. The desktop prefilter uses the same policy but can skip all other
+OCR if every colored candidate row is certain. This is deliberately an
+overriding preference, not a claim that weak-Exceptional items never have
+better immediate PvE score. It does not alter the PVE/PVP scoring modes.
