@@ -124,7 +124,9 @@ class UniversalDesktopParityTests(unittest.TestCase):
         aggregated = BuildMetricsAggregator().aggregate(loadout)
         self.assertEqual(len(aggregated.equipment_rolls["mega crit chance"]), 6)
         self.assertEqual(len(aggregated.item_affixes), 6)
-        self.assertEqual(aggregated.stats["mega crit chance"], 54.0)
+        # Equipment rolls track six replaceable slots; raw build totals
+        # include all eight pieces, including the two fixed special slots.
+        self.assertEqual(aggregated.stats["mega crit chance"], 72.0)
         self.assertAlmostEqual(
             BuildScorer(strategy_for(ScoringStrategy.PVE)).score(loadout).combat,
             strategy_for(ScoringStrategy.PVE).score(aggregated).total,
