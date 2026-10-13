@@ -79,8 +79,16 @@ class UniversalOpportunityPolicy:
                 return False
             if sum(new) + 0.25 < sum(old):
                 return False
-        # Preserve achieved two-CDT and single near-cap side defenses. When
-        # a role is still incomplete, the policy may reorganize those rolls.
+        # A fulfilled defense role may be reorganized only for a truly
+        # exceptional TWO-role upgrade, not for weak filler. Otherwise we
+        # would require another nearly impossible matching item and overtrade.
+        candidate_role_improvement = 0.0
+        for name in ("mega crit chance", "triple hit chance"):
+            old = self._valuable_rolls(current, name, 4)
+            new = self._valuable_rolls(prospective, name, 4)
+            target = ROLE_TARGETS[name]
+            candidate_role_improvement += 90.0 * (sum(new) - sum(old)) / target
+
         for name, count, threshold in (
             ("critical damage taken", 2, 50.0),
             ("ranged defense", 1, 90.0),
@@ -89,8 +97,9 @@ class UniversalOpportunityPolicy:
             old = self._valuable_rolls(current, name, count)
             new = self._valuable_rolls(prospective, name, count)
             if len(old) == count and min(old) >= threshold:
-                if len(new) < count or min(new) < threshold:
-                    return False
+                if (len(new) < count or min(new) < threshold):
+                    if candidate_role_improvement < 55.0:
+                        return False
         return True
 
     def assess(
