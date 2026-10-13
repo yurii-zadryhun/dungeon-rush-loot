@@ -22,11 +22,21 @@ from src.watcher import LootWatcher
 def engine_with_rows(rows):
     engine = PaddleOcrEngine.__new__(PaddleOcrEngine)
     engine.min_confidence = 0.2
-    engine._predict = Mock(return_value=[{
-        "rec_texts": [text for text, score in rows],
-        "rec_scores": [score for text, score in rows],
-        "rec_boxes": [[20, i * 40 + 20, 120, i * 40 + 40] for i in range(len(rows))],
-    }])
+    def predict(image):
+        # Badges and affix text are recognized independently in Desktop.
+        # Retain original Y positions and model the distinct region contents.
+        left_region = image.width < 500
+        indexed = [
+            (index, text, score) for index, (text, score) in enumerate(rows)
+            if text.lower().startswith(("lvl", "lv?")) == left_region
+        ]
+        return [{
+            "rec_texts": [text for _, text, _ in indexed],
+            "rec_scores": [score for _, _, score in indexed],
+            "rec_boxes": [[20, i * 40 + 20, 120, i * 40 + 40]
+                          for i, _, _ in indexed],
+        }]
+    engine._predict = Mock(side_effect=predict)
     return engine
 
 
@@ -49,17 +59,18 @@ class DesktopOcrDiagnosticsTest(unittest.TestCase):
 
     def test_analyzer_maps_raw_boxes_to_screenshot_coordinates(self):
         artifacts = self.analyzer.analyze(self.image)
-        diagnostic = artifacts.rarity_level_passes[0]
+        badge, affixes = artifacts.rarity_level_passes
         left, top, right, bottom = fixed_ocr_crop(*self.image.size)
-        self.assertEqual(diagnostic.kind, "popup")
-        self.assertEqual(diagnostic.crop.left, left)
-        self.assertEqual(diagnostic.crop.bottom, bottom)
-        self.assertEqual(diagnostic.scale, 2.0)
-        self.assertEqual(diagnostic.lines[1].box.left, left + 10)
-        self.assertEqual(diagnostic.lines[1].box.top, top + 30)
-        self.assertEqual(diagnostic.lines[1].score, 0.12)
+        self.assertEqual(badge.kind, "badge")
+        self.assertEqual(affixes.kind, "affixes")
+        self.assertGreater(badge.crop.left, left)
+        self.assertEqual(badge.crop.bottom, bottom)
+        self.assertEqual(badge.scale, 2.0)
+        self.assertAlmostEqual(badge.lines[0].box.left, badge.crop.left + 10)
+        self.assertAlmostEqual(badge.lines[0].box.top, top + 30)
+        self.assertEqual(badge.lines[0].score, 0.12)
         self.assertNotIn("Lv?", [line.text for line in artifacts.popup_lines])
-        self.engine._predict.assert_called_once()
+        self.assertEqual(self.engine._predict.call_count, 2)
 
     def test_annotation_is_saved_without_modifying_source(self):
         artifacts = self.analyzer.analyze(self.image)
@@ -85,7 +96,7 @@ class DesktopOcrDiagnosticsTest(unittest.TestCase):
             LootCardSplitter().split([])
 
     def test_analyzer_propagates_title_count_exception(self):
-        self.engine._predict.return_value = []
+        self.engine._predict.side_effect = lambda _: []
         with self.assertRaises(LootCardTitleCountError):
             self.analyzer.analyze(self.image)
 
@@ -139,7 +150,7 @@ class DesktopOcrDiagnosticsTest(unittest.TestCase):
             diagnostic = event["rarity_level_passes"][0]
             self.assertEqual(diagnostic["coordinate_space"], "screenshot_pixels")
             self.assertEqual([line["text"] for line in diagnostic["ocr_lines"]],
-                             [] if empty else ["Divine Celestial Helmet", "Lv?", "Lvl87", "Immortal Dread Helm", "Lvl4"])
+                             [] if empty else ["Lv?", "Lvl87", "Lvl4"])
             self.assertEqual(len(event["ocr_lines"]), 0 if empty else 4)
             self.assertEqual(event["rarity_level_annotated_image"],
                              str(output / "rarity-level-annotated.jpg"))
