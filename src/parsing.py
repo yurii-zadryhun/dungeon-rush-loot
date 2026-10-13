@@ -18,13 +18,13 @@ STAT_NUMBER_RE = re.compile(
     r"\s*(?P<suffix>%(?:\s*%)*|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
-# OCR frequently corrupts the small "Lvl" prefix and its separator.
-# Require the stable "Lv"/"LU" anchor; allow 0–3 arbitrary NON-DIGIT
-# glyphs before the number. Keep digits strictly observed (no completion).
-# The historical "Lv0124" representation is accepted only when its 3-digit
-# number is complete and within the possible equipment range.
+# OCR frequently corrupts the tiny "Lvl" glyphs. After the stable "Lv"
+# anchor, allow up to three non-digits; also accept the OCR-confusable "1"
+# for its last "l" ONLY when followed by a non-digit separator (e.g. "Lv1 123").
+# Never guess, combine, or reconstruct digits of the actual level. Preserve
+# the historical verified "Lv0124" glyph-variant separately.
 LEVEL_MARKER_RE = re.compile(
-    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu][^\d\n]{0,3})\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,]\d))",
+    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu](?:[^\d\n]{0,3}|1[^\d\n]{1,3}))\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,]\d))",
     re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
