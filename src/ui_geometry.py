@@ -69,3 +69,10 @@ EQUIPMENT_IMPORT_LEVEL_CROP = RelativeRect(0.135, 0.545, 0.325, 0.585)
 LOOT_BADGE_CROP = RelativeRect(0.155, OCR_CROP_TOP, 0.345, OCR_CROP_BOTTOM)
 LOOT_TEXT_CROP = RelativeRect(0.345, OCR_CROP_TOP, OCR_CROP_RIGHT, OCR_CROP_BOTTOM)
 
+
+# Candidate's orange exceptional affixes are pinned to the lower-right
+# end of the popup. Calibrated from 945x2048 live screenshot: Y≈1532
+# lies between "+34.83% Melee Damage" and "+3.67% Block Chance".
+# Before an irreversible fast SELL, color scanlines verify that all
+# exceptional rows fit entirely inside these boundaries.
+LOOT_EXCEPTIONAL_CROP = RelativeRect(0.345, 0.748, 0.875, 0.820)

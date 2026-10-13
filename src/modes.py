@@ -69,6 +69,25 @@ class AutoClickMode:
     def handle_check(self, comparison) -> None:
         return None
 
+    def quick_sell(self, original: Image.Image, region: tuple[int, int, int, int]) -> bool:
+        """Touch only after the same foreground and fresh-frame gates as Auto."""
+        if self.device.foreground_package() != TARGET_PACKAGE:
+            return False
+        current = self.device.screenshot()
+        if current.size != original.size:
+            return False
+        if visual_difference(
+            visual_signature(original, region),
+            visual_signature(current, region),
+        ) > 0.005:
+            return False
+        if self.device.foreground_package() != TARGET_PACKAGE:
+            return False
+        # The probe only authorizes candidates whose rarity is not an
+        # upgrade, so the Divine-over-Immortal confirmation case is excluded.
+        self.click(Action.SELL, current.size)
+        return True
+
     def handle(self, context: DecisionContext) -> ModeOutcome:
         verified = self._fresh_verification(context)
         if verified is None:

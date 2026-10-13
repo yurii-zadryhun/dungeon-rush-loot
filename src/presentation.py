@@ -28,6 +28,8 @@ class ComparisonFormatter:
     def title(comparison: Comparison) -> str:
         if comparison.status is not ComparisonStatus.OK:
             return "🟡 CHECK OCR"
+        if comparison.rejection_reason == "fast_exceptional":
+            return "🔴 SELL · FAST EXCEPTIONAL (<90%)"
         if comparison.rejected:
             return "🔴 SELL · REJECTED"
         if comparison.equipped_score is None or comparison.candidate_score is None:

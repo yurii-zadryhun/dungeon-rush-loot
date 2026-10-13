@@ -278,3 +278,23 @@ Desktop PaddleOCR uses independent badge/level and name/affix regions
 spanning the full popup Y range; the second pre-click screenshot takes
 a cheap candidate-card pixel signature before resorting to neural OCR.
 Always verify foreground first and OCR again when candidate pixels differ.
+
+### Fast Exceptional SELL (Desktop Auto, Universal)
+
+Before full PaddleOCR, Desktop Auto scans the bottom-right candidate
+column `x=0.345..0.875, y=0.748..0.820` for yellow Exceptional text.
+It identifies orange text rows in the original screenshot; crops ONLY these
+rows for the OCR model, then confirms that every colored text row was
+recognized as exactly 1-2 valid Exceptional affixes. If the sum of
+(CDT/RD/MD/Triple/Mega roll divided by its per-item cap) is **below 90%**,
+a tiny badge OCR verifies both item rarities. A fast SELL is allowed only if
+candidate rarity is no higher than equipped rarity (avoids confirmation).
+An independent screenshot must still match immediately before tapping.
+
+Strong candidates and any ambiguity use the complete, unchanged
+`LootDecisionEngine → ItemComparer → Universal` pipeline. This is an
+intentional gameplay policy to skip unpromising items, not a proof that a
+weak-Exceptional candidate cannot improve today's overall combat score.
+It does not affect Info mode or Android Auto; Android currently continues
+using its normal, fully validated decision path. No scores or equipment state
+are updated for fast sells.

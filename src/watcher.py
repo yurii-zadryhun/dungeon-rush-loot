@@ -6,9 +6,11 @@ from .adb import AdbDevice
 from .analysis import LootAnalyzer
 from .artifacts import ArtifactWriter
 from .config import DEFAULT_CANDIDATE_HASH_TTL, DEFAULT_VISUAL_SIGNATURE_TTL, TARGET_PACKAGE
-from .domain import ComparisonStatus, WatchState
+from .domain import Action, Comparison, ComparisonStatus, ScoringStrategy, WatchState
 from .modes import DecisionContext, DecisionMode
 from .parsing import LootCardTitleCountError
+from .fast_sell import FastExceptionalSellProbe
+from .modes import AutoClickMode
 from .presentation import ConsolePresenter
 from .vision import semantic_candidate_hash, source_region_for_lines, visual_difference, visual_signature
 
@@ -43,6 +45,16 @@ class LootWatcher:
         self.candidate_hash_ttl = candidate_hash_ttl
         self.decision_log = decision_log
         self.state = WatchState()
+        # The same full Python comparer remains authoritative for any
+        # promising/uncertain item. This optional cheap SELL gate is auto-only.
+        strategy = self.analyzer.decision_engine.comparer.scorer
+        self.quick_probe = (
+            FastExceptionalSellProbe(self.analyzer.engine, scale=self.scale)
+            if isinstance(mode, AutoClickMode)
+            and strategy is not None
+            and strategy.strategy.name is ScoringStrategy.UNIVERSAL
+            else None
+        )
 
     def run(self) -> int:
         self.presenter.debug("Ready. No fixed foreground polling delay; ADB I/O sets the pace. Ctrl+C to stop.")
@@ -79,6 +91,29 @@ class LootWatcher:
     def _process_frame(self, image) -> None:
         if self._unchanged(image):
             return
+        if self.quick_probe is not None:
+            evidence = self.quick_probe.probe(image)
+            if evidence is not None and self.mode.quick_sell(image, evidence.crop):
+                names = ", ".join(f"{s.name} {abs(s.value):.2f}%" for s in evidence.stats)
+                comparison = Comparison(
+                    status=ComparisonStatus.OK,
+                    action=Action.SELL,
+                    candidate=None, equipped=None,
+                    candidate_score=None, equipped_score=None,
+                    message=(f"Fast Exceptional SELL: {names}; "
+                             f"cap coverage {evidence.cap_fraction:.0%} < 90%."),
+                    rejection_reason="fast_exceptional",
+                )
+                self.presenter.result(comparison)
+                if self.decision_log is not None:
+                    self.decision_log.append(
+                        comparison, source="desktop", ocr_lines=evidence.ocr_lines,
+                    )
+                self.state.last_success_region = evidence.crop
+                self.state.last_success_signature = visual_signature(image, evidence.crop)
+                self.state.last_success_signature_at = time.monotonic()
+                self.state.last_error_key = None
+                return
         artifacts = self.analyzer.analyze(image)
         comparison = artifacts.comparison
         if comparison.status is not ComparisonStatus.OK or comparison.candidate is None:
