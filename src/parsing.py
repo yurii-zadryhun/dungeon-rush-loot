@@ -24,7 +24,7 @@ STAT_NUMBER_RE = re.compile(
 # Never guess, combine, or reconstruct digits of the actual level. Preserve
 # the historical verified "Lv0124" glyph-variant separately.
 LEVEL_MARKER_RE = re.compile(
-    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu](?:[^\d\n]{0,3}|1[^\d\n]{1,3}))\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,]\d))",
+    r"\b(?:lv0(?=1[0-2]\d\b)|l[vu](?:[^\d\n]{0,3}|1[^\d\n]{1,3}))\s*(?P<level>\d{1,3}|\dO\d)\b(?!\s*(?:%|\d|[.,/:-]\s*\d))",
     re.I,
 )
 # Observed ML Kit live OCR: "LvI 124 •7.32 Ranged Damage".
