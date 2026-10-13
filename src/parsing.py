@@ -285,9 +285,11 @@ class LootItemParser:
             # The known positive-only skill and cap are checked below.
             clean = LEVEL_ROW_BULLET_SIGN_RE.sub("+", clean, count=1)
         match = STAT_NUMBER_RE.search(clean)
-        # The standard path intentionally keeps strictly observed digits.
-        # Only a failed standard match may try contextual OCR glyph recovery.
-        corrected = match is None
+        # The legacy regex admits O in a fractional position, so a successful
+        # legacy match is NOT proof that the number contains only real digits.
+        # Every letter-shaped digit must pass the same signed-percent and
+        # exact-label validation before numeric conversion.
+        corrected = match is None or bool(re.search(r"[A-Za-z|]", match.group("number")))
         if corrected:
             match = OCR_PERCENT_NUMBER_RE.search(clean)
         if match is None:
