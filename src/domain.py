@@ -167,12 +167,21 @@ class Comparison:
 
 
 @dataclass(frozen=True)
+class OcrPass:
+    kind: str
+    crop: Box
+    scale: float
+    lines: tuple[OcrSpan, ...]
+
+
+@dataclass(frozen=True)
 class AnalysisArtifacts:
     comparison: Comparison
     popup_box: tuple[int, int, int, int]
     popup_lines: tuple[OcrLine, ...]
     equipped_lines: tuple[OcrLine, ...]
     candidate_lines: tuple[OcrLine, ...]
+    rarity_level_passes: tuple[OcrPass, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 MODE="${1:-info}"
-SERIAL="${2:-}"
-STRATEGY="${3:-${LOOT_STRATEGY:-universal}}"
+STRATEGY="${2:-${LOOT_STRATEGY:-universal}}"
+SERIAL="${3:-}"
 EQUIPMENT_FILE="${EQUIPMENT_FILE:-equipment.json}"
 [[ "$MODE" == "info" || "$MODE" == "auto" ]] || { echo "Usage: $0 [info|auto] [ADB_SERIAL] [universal|pve|pvp]" >&2; exit 2; }
 [[ "$STRATEGY" == "universal" || "$STRATEGY" == "pve" || "$STRATEGY" == "pvp" ]] || { echo "Unknown strategy: $STRATEGY" >&2; exit 2; }

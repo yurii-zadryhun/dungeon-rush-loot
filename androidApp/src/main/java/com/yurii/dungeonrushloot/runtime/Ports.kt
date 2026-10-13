@@ -9,6 +9,7 @@ import org.json.JSONObject
 data class CapturedFrame(
     val bitmap: Bitmap,
     val capturedAtMillis: Long = System.currentTimeMillis(),
+    val badgeOcrPasses: MutableList<BadgeOcrPass> = mutableListOf(),
 )
 
 interface ScreenCaptureAdapter {

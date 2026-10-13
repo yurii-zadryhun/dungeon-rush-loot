@@ -8,6 +8,7 @@ from .artifacts import ArtifactWriter
 from .config import DEFAULT_CANDIDATE_HASH_TTL, DEFAULT_VISUAL_SIGNATURE_TTL, TARGET_PACKAGE
 from .domain import ComparisonStatus, WatchState
 from .modes import DecisionContext, DecisionMode
+from .parsing import LootCardTitleCountError
 from .presentation import ConsolePresenter
 from .vision import semantic_candidate_hash, source_region_for_lines, visual_difference, visual_signature
 
@@ -59,6 +60,9 @@ class LootWatcher:
             return
         try:
             self._process_frame(self.device.screenshot())
+        except LootCardTitleCountError:
+            self.state.reset_visual_gate()
+            time.sleep(self.retry_interval)
         except Exception as exc:
             self.state.reset_visual_gate()
             self._report_error(exc)
@@ -79,7 +83,7 @@ class LootWatcher:
         comparison = artifacts.comparison
         if comparison.status is not ComparisonStatus.OK or comparison.candidate is None:
             self.state.reset_visual_gate()
-            self._report_check(comparison)
+            self._report_check(image, artifacts)
             time.sleep(self.retry_interval)
             return
         candidate_hash = semantic_candidate_hash(comparison.candidate)
@@ -87,9 +91,7 @@ class LootWatcher:
             self._commit_visual_gate(image, artifacts)
             return
         self.presenter.result(comparison)
-        self.artifacts.save(image, artifacts, self.scale)
-        if self.decision_log is not None:
-            self.decision_log.append(comparison, source="desktop", ocr_lines=artifacts.popup_lines)
+        self._save_diagnostics(image, artifacts)
         outcome = self.mode.handle(DecisionContext(image, artifacts, candidate_hash))
         if outcome.message and self.presenter.verbose:
             self.presenter.warning(outcome.message)
@@ -123,13 +125,22 @@ class LootWatcher:
         self.state.last_success_signature_at = time.monotonic()
         self.state.last_error_key = None
 
-    def _report_check(self, comparison) -> None:
+    def _save_diagnostics(self, image, artifacts) -> None:
+        self.artifacts.save(image, artifacts, self.scale)
+        if self.decision_log is not None:
+            self.decision_log.append(
+                artifacts.comparison, source="desktop", ocr_lines=artifacts.popup_lines,
+                rarity_level_passes=artifacts.rarity_level_passes,
+                rarity_level_annotated_image=self.artifacts.rarity_level_image_path(artifacts),
+            )
+
+    def _report_check(self, image, artifacts) -> None:
+        comparison = artifacts.comparison
         key = comparison.message
         now = time.monotonic()
         if key != self.state.last_error_key or now - self.state.last_error_at >= 10.0:
             self.presenter.result(comparison)
-            if self.decision_log is not None:
-                self.decision_log.append(comparison, source="desktop")
+            self._save_diagnostics(image, artifacts)
             self.mode.handle_check(comparison)
             self.state.last_error_key, self.state.last_error_at = key, now
 

@@ -47,7 +47,7 @@ class PaddleOcrAdapter(context: Context) : OcrAdapter {
         crop: RelativeRect,
         scale: Float,
     ): List<OcrSpanDto> {
-        val left = recognizeLines(frame, LootOcrColumns.left(crop), scale)
+        val left = recognizeBadges(frame, "rarity", LootOcrColumns.left(crop), scale)
         val rarities = IconLevelRecovery.rarityAnchors(left, frame.bitmap.height)
         if (rarities.size != 2) return recognizeLines(frame, crop, scale)
 
@@ -60,11 +60,11 @@ class PaddleOcrAdapter(context: Context) : OcrAdapter {
             // A crop anchored to the actual rarity position is much more
             // reliable than enlarging the complete icon column. Independent
             // readings must NOT be made to agree by altering numeric digits.
-            val targeted = recognizeLines(frame, region, scale = 4.0f)
+            val targeted = recognizeBadges(frame, "level", region, scale = 4.0f)
             val validated = IconLevelRecovery.eligibleLevel(observed + targeted)
             if (validated.isEmpty()) {
                 IconLevelRecovery.eligibleLevel(
-                    recognizeLines(frame, region, scale = 4.0f, lightText = true)
+                    recognizeBadges(frame, "level", region, scale = 4.0f, lightText = true)
                 )
             } else {
                 // Do not pass duplicate text into the row assembler. However,
@@ -86,12 +86,24 @@ class PaddleOcrAdapter(context: Context) : OcrAdapter {
     ): List<OcrSpanDto> {
         val regions = IconLevelRecovery.regions(spans, frame.bitmap.width, frame.bitmap.height)
         return regions.flatMap { region ->
-            val first = recognizeLines(frame, region, scale = 4.0f)
+            val first = recognizeBadges(frame, "level_recovery", region, scale = 4.0f)
             val contrast = if (IconLevelRecovery.eligibleLevel(first).isEmpty()) {
-                recognizeLines(frame, region, scale = 4.0f, lightText = true)
+                recognizeBadges(frame, "level_recovery", region, scale = 4.0f, lightText = true)
             } else emptyList()
             IconLevelRecovery.eligibleLevel(first + contrast)
         }
+    }
+
+    private suspend fun recognizeBadges(
+        frame: CapturedFrame,
+        kind: String,
+        crop: RelativeRect,
+        scale: Float,
+        lightText: Boolean = false,
+    ): List<OcrSpanDto> {
+        val lines = recognizeLines(frame, crop, scale, lightText)
+        frame.badgeOcrPasses += BadgeOcrPass(kind, crop, scale, lightText, lines)
+        return lines
     }
 
     /** Used by equipment import to read main card text and icon-level labels. */

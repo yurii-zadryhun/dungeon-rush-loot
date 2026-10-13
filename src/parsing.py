@@ -73,6 +73,10 @@ class OcrLineAssembler:
         return OcrLine(text, score, box, tuple(row))
 
 
+class LootCardTitleCountError(ValueError):
+    pass
+
+
 class LootCardSplitter:
     """Split the two visible loot cards without discarding separate rarity rows.
 
@@ -90,7 +94,7 @@ class LootCardSplitter:
             if self._title_at(useful, index) is not None
         ]
         if len(titles) != 2:
-            raise ValueError(
+            raise LootCardTitleCountError(
                 f"Expected exactly two identifiable loot-card titles, got {len(titles)}."
             )
 

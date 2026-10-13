@@ -162,6 +162,22 @@ That means an old `CDT 45` item with excellent Triple/Attack Speed is still expe
 - There is no fixed foreground poll delay; ADB I/O sets the pace.
 - The current Divine-sell confirmation click remains in auto mode for the known `Immortal equipped -> Divine candidate -> SELL` case.
 
+Desktop diagnostics (both `info` and `auto`) are saved under `loot_runtime/`
+or `--output-dir`. Alongside `captured.png`, `comparison.json` and `annotated.jpg`,
+`rarity-level-annotated.jpg` shows raw OCR text and confidence in screenshot
+coordinates: cyan highlights rarity, yellow level, and gray other/unparsed text.
+Desktop uses its existing full-popup OCR pass for these diagnostics, without
+adding recognition passes or changing confidence filtering. Low-confidence
+results remain diagnostic-only and never influence decisions.
+
+`decisions.jsonl` includes accepted `ocr_lines` and `rarity_level_passes` with
+the crop, scale and all raw OCR lines (including rejected and empty results).
+`rarity_level_annotated_image` points to the latest image, not a historical
+snapshot. Images are overwritten to keep storage bounded; copy them before
+continuing to preserve an observation. CHECK results also save diagnostics,
+including unreadable/missing titles, using the existing 10-second retry-log
+throttle. `--no-annotate` disables both annotated images, but not OCR logs.
+
 ## Setup / tests
 
 ```bash

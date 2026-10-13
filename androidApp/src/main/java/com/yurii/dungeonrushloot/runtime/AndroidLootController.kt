@@ -22,6 +22,7 @@ class AndroidLootController(
     private val appLog: ApplicationLogAdapter,
     private val bridge: PythonDecisionBridge,
     private val config: AppConfig,
+    private val badgeImages: BadgeOcrImageWriter? = null,
 ) {
     private val stableForeground = StableForeground(config.targetPackage)
     private val recentlyHandledGate = CandidateRetryGate(CANDIDATE_TTL_MS)
@@ -240,7 +241,7 @@ class AndroidLootController(
         }
     }
 
-    private fun logOcrObservation(
+    private suspend fun logOcrObservation(
         frame: CapturedFrame,
         initial: DecisionEvent,
         result: DecisionEvent,
@@ -264,6 +265,19 @@ class AndroidLootController(
         fun spansJson(spans: List<com.yurii.dungeonrushloot.model.OcrSpanDto>): JSONArray =
             JSONArray().apply { spans.forEach { put(it.toJson()) } }
 
+        val imageUri = try {
+            badgeImages?.save(frame)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            appLog.warning(
+                category = "auto_ocr",
+                event = "annotation_failed",
+                message = "Rarity/level image could not be saved: ${error.message}",
+            )
+            null
+        }
+
         appLog.info(
             category = "auto_ocr",
             event = "observation",
@@ -285,6 +299,11 @@ class AndroidLootController(
                 .put("enhanced_scale", if (enhanced == null) JSONObject.NULL else 3.0)
                 .put("enhanced_spans", if (enhanced == null) JSONObject.NULL else spansJson(enhanced))
                 .put("icon_level_spans", if (iconLevels == null) JSONObject.NULL else spansJson(iconLevels))
+                .put("captured_at_millis", frame.capturedAtMillis)
+                .put("rarity_level_passes", JSONArray().apply {
+                    frame.badgeOcrPasses.forEach { put(it.toJson()) }
+                })
+                .put("rarity_level_annotated_image", imageUri ?: JSONObject.NULL)
                 .put("selected_result", JSONObject(result.rawJson)),
         )
     }

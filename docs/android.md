@@ -66,8 +66,21 @@ No missing level is inferred from the equipped item, UI tier, rarity, or
 previous screenshot. An unreadable label, conflicting level, or unknown
 title still yields **CHECK OCR** and no automated tap.
 
-The temporary one-shot screenshot/ZIP diagnostic has been removed from the
-application. Only existing JSONL session and application logs remain.
+The temporary one-shot screenshot/ZIP diagnostic has been removed. Auto now
+saves the latest rarity/level annotated screenshot to
+`Downloads/DungeonRushLoot/rarity-level-annotated.jpg` when an
+`auto_ocr.observation` diagnostic is recorded (including CHECK results).
+The file is overwritten to keep storage bounded; copy it before continuing Auto
+if you need to preserve a particular observation. Cyan marks rarity scan regions
+and boxes; yellow marks targeted level regions and boxes. Labels identify the
+pass, scale, contrast mode and recognized text, including rejected OCR text.
+
+The Application log's `rarity_level_passes` contains every attempted badge pass,
+its crop, scale, contrast mode and raw `ocr_lines` with confidence and screen
+coordinates, including empty results. `captured_at_millis` matches the image
+timestamp, and `rarity_level_annotated_image` contains its Downloads URI (the
+latest image, not a historical snapshot). Image save failures are logged without
+changing the OCR decision. Existing diagnostic throttling still applies.
 
 ## Alt accounts, rarity and exceptional rolls
 

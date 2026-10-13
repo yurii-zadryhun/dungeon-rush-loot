@@ -34,6 +34,7 @@ class LootAccessibilityService : AccessibilityService() {
             appLog = graph.appLog,
             bridge = graph.bridge,
             config = graph.bridge.config,
+            badgeImages = BadgeOcrImageWriter(this),
         )
         _connected.value = true
         graph.appLog.info(
