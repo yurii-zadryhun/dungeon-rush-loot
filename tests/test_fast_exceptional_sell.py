@@ -121,6 +121,21 @@ class FastExceptionalTests(unittest.TestCase):
                     FastExceptionalSellProbe(FakeOcr(rarities=rarities)).probe(screen())
                 )
 
+    def test_fast_touch_rejects_changed_candidate_title_even_if_exceptional_identical(self):
+        first = screen()
+        second = first.copy()
+        ImageDraw.Draw(second).rectangle((355, 1400, 650, 1425), fill="white")
+        device = Mock()
+        device.foreground_package.return_value = TARGET_PACKAGE
+        device.screenshot.return_value = second
+        touch = Mock()
+        mode = AutoClickMode(device, Mock(), touch, Mock(verbose=False),
+                             Mock(), 2.0, 0.01)
+        self.assertFalse(mode.quick_sell(
+            first, LOOT_EXCEPTIONAL_CROP.pixels(first.size),
+        ))
+        touch.touch.assert_not_called()
+
     def test_fast_touch_requires_foreground_and_unchanged_candidate_pixels(self):
         first = screen()
         device = Mock()

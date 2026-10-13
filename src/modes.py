@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 from .adb import AdbDevice
 from .analysis import LootAnalyzer
@@ -76,11 +76,18 @@ class AutoClickMode:
         current = self.device.screenshot()
         if current.size != original.size:
             return False
-        if visual_difference(
-            visual_signature(original, region),
-            visual_signature(current, region),
-        ) > 0.005:
-            return False
+        # Full candidate card + equipped rarity/header must be identical.
+        # Checking only the yellow affixes would miss a changed Divine title
+        # or a rarity upgrade carrying the same weak exceptional line.
+        w, h = current.size
+        candidate_card = (int(.125*w), int(.645*h), int(.875*w), int(.820*h))
+        equipped_badge = (int(.125*w), int(.400*h), int(.345*w), int(.645*h))
+        for checked_region in (candidate_card, equipped_badge):
+            if ImageChops.difference(
+                original.crop(checked_region).convert("RGB"),
+                current.crop(checked_region).convert("RGB"),
+            ).getbbox() is not None:
+                return False
         if self.device.foreground_package() != TARGET_PACKAGE:
             return False
         # The probe only authorizes candidates whose rarity is not an
