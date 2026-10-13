@@ -94,6 +94,7 @@ class LootWatcher:
         if self._unchanged(image):
             return
         if self.quick_probe is not None:
+            fast_started = time.perf_counter()
             try:
                 evidence = self.quick_probe.probe(image)
             except Exception as exc:
@@ -110,7 +111,8 @@ class LootWatcher:
                     candidate=None, equipped=None,
                     candidate_score=None, equipped_score=None,
                     message=(f"Fast Exceptional SELL: {names}; "
-                             f"cap coverage {evidence.cap_fraction:.0%} < 90%."),
+                             f"cap coverage {evidence.cap_fraction:.0%} < 90%; "
+                             f"elapsed {(time.perf_counter()-fast_started)*1000:.0f} ms."),
                     rejection_reason="fast_exceptional",
                 )
                 self.presenter.result(comparison)
