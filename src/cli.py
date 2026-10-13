@@ -110,7 +110,7 @@ def main() -> int:
         retry_interval=args.retry_interval,
         visual_signature_ttl=visual_signature_ttl,
         candidate_hash_ttl=candidate_hash_ttl,
-        decision_log=JsonlDecisionLog(args.output_dir / "decisions.jsonl", args.strategy),
+        decision_log=JsonlDecisionLog.start_session(args.output_dir, args.strategy),
     )
     return watcher.run()
 

@@ -11,10 +11,12 @@ from .text import LEVEL_RE, PERCENT_RE, fuzzy_skill_name, is_melee_title, looks_
 
 
 # Recognition can lose the percent glyph or render it as l/I/°.
-# The numeric digits remain strict, and missing percent is accepted only with
+# The integer digits remain strict; one fractional O can be normalized under
+# explicit sign, percent, exact label and skill-cap verification.
+# Missing percent is accepted only with
 # an explicit +/- sign, an unambiguous known skill, and an in-range value.
 STAT_NUMBER_RE = re.compile(
-    r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,]\d{1,2})"
+    r"(?<![\w.])(?P<number>[+-]?\s*\d{1,3}[.,][0-9Oo]{1,2})"
     r"\s*(?P<suffix>%(?:\s*%)*|[lI]\s*%+|[lI]\.|[°º]|[lIoO](?=\s))?(?=\s|$|[A-Za-z])",
     re.I,
 )
@@ -243,7 +245,7 @@ class LootItemParser:
     def _stats(
         self, lines: Sequence[OcrLine], *, allow_cape_primaries: bool = False,
     ) -> list[ParsedStat]:
-        """Parse stat rows without inferring or changing numeric digits."""
+        """Parse validated OCR stats, allowing one bounded fractional O→0 repair."""
         parsed: list[ParsedStat] = []
         index = 0
         while index < len(lines):
@@ -272,8 +274,26 @@ class LootItemParser:
 
         numeric = match.group("number")
         suffix = (match.group("suffix") or "").strip()
-        value = float(numeric.replace(" ", "").replace(",", "."))
         remainder = self._clean_label(clean[match.end():])
+        # The same tiny percent font can make a fractional zero look like O:
+        # "+15.O2% Double Hit Chance". Recover only ONE O in the fractional
+        # digits of a signed, explicitly percent-marked, exactly named skill.
+        # Never reconstruct integer digits ("+1O.82%"), a missing decimal,
+        # missing percent, or an ambiguous/fuzzy skill label.
+        fraction = numeric.replace(",", ".").split(".", 1)[-1]
+        repaired_fraction = "o" in fraction.lower()
+        if repaired_fraction:
+            exact_name, exact_ratio = fuzzy_skill_name(remainder)
+            if (
+                fraction.lower().count("o") != 1
+                or not numeric.lstrip().startswith(("+", "-"))
+                or not suffix.startswith("%")
+                or exact_ratio != 1.0
+                or exact_name is None
+            ):
+                return None, 1
+        value = float(numeric.replace(" ", "").replace(",", ".")
+                      .replace("O", "0").replace("o", "0"))
         # Only a real percent or a close visual glyph variant counts as a
         # recognized separator. Wholly missing separators require a sign.
         repaired_separator = not suffix.startswith("%")
@@ -304,6 +324,10 @@ class LootItemParser:
             # We recovered the separator, NOT the number. Keep original text
             # and signal reduced certainty relative to an intact percent glyph.
             confidence = min(line.score, ratio, 0.93)
+        elif repaired_fraction:
+            # Preserve raw_text; mark one observed O->0 OCR correction explicitly
+            # as lower confidence than an intact numeric reading.
+            confidence = min(line.score, ratio, 0.90)
         else:
             confidence = min(line.score, ratio)
         return ParsedStat(name, value, line.text, confidence), consumed

@@ -72,6 +72,26 @@ HELMET = [
 ]
 
 
+# Raw recognized strings and y-coordinates from the user's stuck
+# 2026-10-13 11:31 Desktop session, including the actual OCR 'O'.
+NECKLACE_FRACTIONAL_O = [
+    ("Immortal [EXP] Dread Necklace", 345, 466),
+    ("Health 236.00K", 488, 581),
+    ("+11.32% Lifesteal", 596, 674),
+    ("Lvl 12 -3.66% Companion Cooldown", 685, 779),
+    ("+46.04% Critical Damage", 786, 877),
+    ("+24.44% Triple Hit Chance", 887, 968),
+    ("-44.78% Critical Damage", 980, 1070),
+    ("Taken", 1079, 1161),
+    ("Immortal [EXP] Undying Necklace", 1293, 1421),
+    ("Health 209.00K", 1440, 1526),
+    ("+5.64% Critical Chance", 1548, 1624),
+    ("Lvl 3 +2.95% Health Regen", 1636, 1731),
+    ("+15.O2% Double Hit Chance", 1742, 1816),
+    ("+4.58% Mega Crit Chance", 1838, 1920),
+]
+
+
 class SharedDesktopAndroidDecisionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -129,6 +149,18 @@ class SharedDesktopAndroidDecisionTests(unittest.TestCase):
             event["score_delta"]["components"]["target_defense"], 0, places=6,
         )
         self.assertAlmostEqual(event["score_delta"]["total"], -0.08, delta=0.5)
+
+    def test_stuck_necklace_20261013_fractional_O_is_validated_identically(self):
+        event = self.decisions(NECKLACE_FRACTIONAL_O)
+        self.assertEqual(event["status"], "ok", event["message"])
+        self.assertEqual(event["slot"], "necklace")
+        self.assertEqual(event["action"], "sell")
+        candidate = event["candidate"]
+        self.assertEqual(candidate["level"], 3)
+        double_hit = next(stat for stat in candidate["stats"] if stat["name"] == "double hit chance")
+        self.assertAlmostEqual(double_hit["value"], 15.02)
+        self.assertEqual(double_hit["raw_text"], "+15.O2% Double Hit Chance")
+        self.assertLessEqual(double_hit["confidence"], 0.90)
 
     def test_real_midgame_mega_and_triple_marginals_dwarf_companion_damage(self):
         base = BuildMetricsAggregator().aggregate(self.loadout)

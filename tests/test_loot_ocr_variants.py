@@ -359,6 +359,32 @@ class LootOcrVariantTest(unittest.TestCase):
                 self.assertEqual(result["status"], "check_ocr", result)
                 self.assertEqual(result["action"], "check")
 
+    def test_fractional_O_recovery_is_bounded_and_exact(self):
+        parser = LootItemParser()
+        recognized = parser._stats([OcrLine(
+            "+15.O2% Double Hit Chance", 0.99, Box(0, 0, 320, 30),
+        )])
+        self.assertEqual(len(recognized), 1)
+        self.assertEqual(recognized[0].name, "double hit chance")
+        self.assertAlmostEqual(recognized[0].value, 15.02)
+        self.assertEqual(recognized[0].raw_text, "+15.O2% Double Hit Chance")
+        self.assertLessEqual(recognized[0].confidence, 0.90)
+
+        for raw in (
+            "+1O.82% Critical Chance",       # integer O is not a numeral
+            "+15.OO% Double Hit Chance",     # two missing fractional digits
+            "15.O2% Double Hit Chance",      # no sign
+            "+15.O2 Double Hit Chance",      # no percent
+            "+50.O2% Double Hit Chance",     # above per-affix cap
+            "+15.O2% Chocolate Croissant",   # unknown label
+            "+15.O2% Double Hit Chanc?",     # repaired numeral + fuzzy label
+            "+15.O24% Double Hit Chance",    # extra digit is not discarded
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    parser._stats([OcrLine(raw, 0.99, Box(0, 0, 320, 30))]), [],
+                )
+
     def test_conflicting_level_or_missing_title_fails_closed(self):
         equipped, candidate = CARDS[EquipmentSlot.HELMET]
         rows = render_card(equipped) + ["Lvl 44"] + render_card(candidate)

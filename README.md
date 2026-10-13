@@ -242,3 +242,18 @@ is far more valuable than Companion Damage.
 
 Rolling Android builds now come from `master`:
 `https://github.com/yurii-zadryhun/dungeon-rush-loot/releases/tag/master-latest`.
+
+### Decision-log sessions (Desktop)
+
+Each watcher startup reserves a new `loot_runtime/decisions-YYYYMMDD-HHMMSS.jsonl`
+using **local start time**. Existing logs are retained; if two watcher
+runs start in the same second, the second file gets a `-2` suffix.
+The structured JSONL event schema stays unchanged. The old
+`decisions.jsonl`, if present, is left untouched.
+
+A single OCR letter `O` in the fractional digits of a **signed percent**
+(e.g. `+15.O2% Double Hit Chance`) can be read as zero only when the
+skill label is exact and the corrected value is within its per-item cap.
+The original OCR string remains in logs and the corrected stat is
+marked with lower confidence. Integer digit corruption and ambiguous
+labels still fail closed.
