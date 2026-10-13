@@ -94,6 +94,35 @@ class UniversalTargetContract(unittest.TestCase):
         self.assertGreater(component(four, "target_mega"), component(almost, "target_mega"))
         self.assertEqual(component(four, "target_mega"), component(five, "target_mega"))
 
+    def test_exact_four_megas_matter_more_than_max_lifesteal_while_missing(self):
+        strategy = strategy_for(ScoringStrategy.UNIVERSAL)
+        current = {
+            "critical damage taken": (55.0, 56.0),
+            "ranged defense": (96.0,),
+            "melee defense": (96.0,),
+            "triple hit chance": (27.0, 25.0, 24.0, 22.0),
+            "mega crit chance": (9.5, 9.5, 9.5),
+        }
+        base = strategy.score(metrics_with_rolls(current)).total
+        fourth_mega = strategy.score(metrics_with_rolls({
+            **current, "mega crit chance": (*current["mega crit chance"], 9.5),
+        })).total
+        max_lifesteal = strategy.score(metrics_with_rolls({
+            **current, "lifesteal": (SKILLS["lifesteal"].cap,),
+        })).total
+        self.assertGreater(fourth_mega - base, max_lifesteal - base + 30.0)
+
+    def test_exact_four_roles_not_five_weak_megas(self):
+        # Fifth Mega cannot fill the four allocated offensive roles. This
+        # is a structural preference, NOT a nerf to PVE combat mechanics.
+        four = {"mega crit chance": (8.0, 8.0, 8.0, 8.0)}
+        five = {"mega crit chance": (8.0, 8.0, 8.0, 8.0, 8.0)}
+        self.assertEqual(component(four, "target_mega"), component(five, "target_mega"))
+        four_triples = {"triple hit chance": (25.0, 24.0, 23.0, 22.0)}
+        five_triples = {"triple hit chance": (25.0, 24.0, 23.0, 22.0, 20.0)}
+        self.assertEqual(component(four_triples, "target_triple"),
+                         component(five_triples, "target_triple"))
+
     def test_missing_exceptional_roles_outweigh_one_near_cap_normal_roll(self):
         strategy = strategy_for(ScoringStrategy.UNIVERSAL)
         # A single roll of junk/normal quality must not be kept in preference

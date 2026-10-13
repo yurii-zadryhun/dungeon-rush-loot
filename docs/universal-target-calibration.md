@@ -74,3 +74,23 @@ candidate pools per slot. That separates **lack of attainable drops** from
 designed, reversible decisions or a stash, not just a different weight number.
 
 No changes made to PVP/PVE, tier/level scaling, Wings/Cloak or Ultimate.
+
+## Desktop parity and exact role count (2026-10-13)
+
+The legacy Desktop `master` branch still had a **50/50 PvE/PvP Universal**
+strategy. On that branch, Lifesteal could legitimately appear more valuable
+than Mega Crit because the whole target-role objective was absent. This
+revision ports the target-based strategy to `master` without merging
+unrelated Android/OCR features.
+
+The intended exceptional allocation is **exactly** 2 CDT, 1 ranged defense,
+1 melee defense, 4 Triple and 4 Mega (12 total). Offensive targets now sum
+the strongest four rolls of each type; a fifth weak Mega or Triple no longer
+artificially completes its target bonus. A regression verifies that the fourth
+good Mega is worth much more than max Lifesteal while Mega remains deficient.
+This is a synthetic scoring contract, not a guarantee an online greedy
+EQUIP/SELL policy attains every role in a finite stream.
+
+Existing offline 50k reference was computed using the older objective and
+must not be treated as the new objective's numerical baseline; compare
+factual roll/count coverage and cross-evaluate consistently.

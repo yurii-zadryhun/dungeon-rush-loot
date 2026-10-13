@@ -207,7 +207,7 @@ class UniversalScoringStrategy:
 
     Exactly twelve exceptional slots are available on six [EXP] pieces.
     The desired allocation is 2 CDT, 1 ranged and 1 melee defense, then
-    3-4 triple and 4-5 mega rolls. Goals saturate: another defense roll
+    exactly 4 triple and 4 mega rolls. Goals saturate: another defense roll
     beyond the target has no special value, and never replaces a missing
     offensive role simply because raw defense keeps growing.
 
@@ -221,6 +221,8 @@ class UniversalScoringStrategy:
     # log-score. These are preferences, not verified game-mechanic formulas.
     CDT_PER_ROLL = 50.0
     SIDE_DEFENSE_PER_ROLL = 95.0
+    TRIPLE_ROLLS = 4
+    MEGA_ROLLS = 4
     TRIPLE_TOTAL = 95.0
     MEGA_TOTAL = 40.0
     NORMAL_WEIGHTS = {
@@ -276,14 +278,23 @@ class UniversalScoringStrategy:
         defense += coverage(ranged[0], self.SIDE_DEFENSE_PER_ROLL) if ranged else 0.0
         defense += coverage(melee[0], self.SIDE_DEFENSE_PER_ROLL) if melee else 0.0
 
-        # A third or fourth strong Triple roll reaches ~90-100; 4-5 Mega
-        # rolls reach ~40-50. Reward both total and individually good rolls.
-        triple_ratio = self._saturation(sum(triple), self.TRIPLE_TOTAL)
+        # Exactly four slots for Triple and four for Mega remain after the
+        # four required defensive rolls (2 CDT, 1 ranged, 1 melee). Score the
+        # BEST FOUR individual rolls, not every roll: five mediocre Megas
+        # must never masquerade as the intended four near-10% Megas.
+        #
+        # While the target is incomplete, each strong Mega earns a large
+        # marginal role reward, independently of minor normal skills such as
+        # Lifesteal. Once four strong Megas already meet the 40% cap, extra
+        # Mega is no longer a *target* benefit (PvE may still value it).
+        triple_target_rolls = triple[:self.TRIPLE_ROLLS]
+        mega_target_rolls = mega[:self.MEGA_ROLLS]
+        triple_ratio = self._saturation(sum(triple_target_rolls), self.TRIPLE_TOTAL)
         triple_bonus = 240.0 * triple_ratio
-        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple[:4])
-        mega_ratio = self._saturation(sum(mega), self.MEGA_TOTAL)
+        triple_bonus += 30.0 * sum(self._saturation(v, 27.0) for v in triple_target_rolls)
+        mega_ratio = self._saturation(sum(mega_target_rolls), self.MEGA_TOTAL)
         mega_bonus = 240.0 * mega_ratio + 30.0 * mega_ratio ** 8
-        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega[:4])
+        mega_bonus += 30.0 * sum(self._saturation(v, 9.5) for v in mega_target_rolls)
 
         # Rank every normal affix separately; an attack-speed+crit-damage
         # pair in six slots earns six times the reward of the same pair in

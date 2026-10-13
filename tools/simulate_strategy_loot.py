@@ -164,8 +164,8 @@ def universal_target_report(loadout: EquipmentLoadout) -> dict:
         "cdt_two_50_plus": sum(v >= 50 for v in cdt) >= 2,
         "ranged_one_90_plus": bool(rd and rd[0] >= 90),
         "melee_one_90_plus": bool(md and md[0] >= 90),
-        "triple_target": 3 <= len(triple) <= 4 and sum(triple) >= 90,
-        "mega_target": 4 <= len(mega) <= 5 and sum(mega) >= 40,
+        "triple_target": len(triple) == 4 and sum(triple) >= 90,
+        "mega_target": len(mega) == 4 and sum(mega) >= 40,
         "normal_counts": count,
         "normal_near_cap_counts": near_cap,
     }
