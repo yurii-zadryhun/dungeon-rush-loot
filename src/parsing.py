@@ -302,7 +302,7 @@ class LootItemParser:
             exact_name, exact_ratio = fuzzy_skill_name(remainder)
             if (
                 exact_name is None or exact_ratio != 1.0
-                or not any(char in OCR_DIGIT_TRANSLATION for char in numeric)
+                or not any(ord(char) in OCR_DIGIT_TRANSLATION for char in numeric)
             ):
                 return None, 1
             normalized = numeric.translate(OCR_DIGIT_TRANSLATION)

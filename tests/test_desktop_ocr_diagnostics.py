@@ -25,10 +25,11 @@ def engine_with_rows(rows):
     def predict(image):
         # Badges and affix text are recognized independently in Desktop.
         # Retain original Y positions and model the distinct region contents.
+        full_image = image.size == (709, 1536)
         left_region = image.width < 500
         indexed = [
             (index, text, score) for index, (text, score) in enumerate(rows)
-            if text.lower().startswith(("lvl", "lv?")) == left_region
+            if full_image or text.lower().startswith(("lvl", "lv?")) == left_region
         ]
         return [{
             "rec_texts": [text for _, text, _ in indexed],
@@ -118,7 +119,7 @@ class DesktopOcrDiagnosticsTest(unittest.TestCase):
             self.analyzer.analyze(self.image)
 
     def test_empty_pass_is_silently_ignored(self):
-        self.engine._predict.return_value = []
+        self.engine._predict.side_effect = lambda _: []
         presenter, mode, writer, decision_log = Mock(), Mock(), Mock(), Mock()
         watcher = LootWatcher(
             Mock(), self.analyzer, mode, presenter, writer,

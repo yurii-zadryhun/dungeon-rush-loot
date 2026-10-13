@@ -11,6 +11,7 @@ from src.domain import (
     ParsedItem,
 )
 from src.modes import AutoClickMode, DecisionContext
+from src.config import TARGET_PACKAGE
 from src.vision import semantic_candidate_hash
 
 
@@ -30,6 +31,7 @@ class FreshCardVerificationTests(unittest.TestCase):
             (OcrLine("Mega Crit 9.82%", 0.98, Box(120, 900, 495, 1150)),),
         )
         self.device = Mock()
+        self.device.foreground_package.return_value = TARGET_PACKAGE
         self.analyzer = Mock()
         self.mode = AutoClickMode(self.device, self.analyzer, Mock(), Mock(),
                                   Mock(), 2.0, 0.01)
