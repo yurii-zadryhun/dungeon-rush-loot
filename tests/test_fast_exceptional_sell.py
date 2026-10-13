@@ -45,7 +45,7 @@ class FakeOcr:
             y0 = int(0.40 * H)
             return [
                 OcrSpan(text, 0.99, Box(20, (y - y0)*2, 275, (y + 23 - y0)*2))
-                for text, y in zip(self.rarities, (951, 1390))
+                for text, y in zip(self.rarities, (951, 1390, 1440))
             ]
         y0 = int(.748*H)
         return [
