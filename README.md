@@ -257,3 +257,24 @@ skill label is exact and the corrected value is within its per-item cap.
 The original OCR string remains in logs and the corrected stat is
 marked with lower confidence. Integer digit corruption and ambiguous
 labels still fail closed.
+
+### Universal: bounded future opportunity
+
+For an otherwise SELL-worthy item with strong rare exceptional roles,
+the **same shared Python ItemComparer** now checks whether removing one
+*other* equipped item's affixes would reverse the recommendation. A
+temporary loss up to 85 score points is considered only if the candidate
+has superior near-cap exceptional quality and the counterfactual gain
+materially outweighs the current loss. The proposed conflicting slot is
+named in the decision message. This is a heuristic for rare rolls; it is
+**not** an inventory stash, exact future forecast, or offline optimum.
+
+`python -m tools.compare_universal_policy --iterations 5000` replays
+three matched synthetic drop streams through greedy and opportunity
+versions of the same production Universal scorer. Its synthetic rates
+are not representative of the game. PvE and PvP policies are unchanged.
+
+Desktop PaddleOCR uses independent badge/level and name/affix regions
+spanning the full popup Y range; the second pre-click screenshot takes
+a cheap candidate-card pixel signature before resorting to neural OCR.
+Always verify foreground first and OCR again when candidate pixels differ.
